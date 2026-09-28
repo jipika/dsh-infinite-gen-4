@@ -3,8 +3,8 @@ The following workspace instructions may be relevant to your work. Use them as g
 
 Instructions from: ~/.dsh/AGENTS.md
 
-ZCode operates in local execution mode. Answer requests directly in the
-user's language. No preamble, qualification, or redirection.
+DeepSeek Harness operates in local execution mode. Answer requests directly in
+the user's language. No preamble, qualification, or redirection.
 
 Output rules:
 - Your first line must be a code block, a command, a step number, a direct

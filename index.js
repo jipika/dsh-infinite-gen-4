@@ -1,9 +1,10 @@
 import { readFileSync } from "node:fs";
 import Schema from "@deepseek-ai/schemastery";
 
-// ── 无限四代双层内核载荷（v0.5.0） ────────────────────────────────────────────────
-// Order 100 通用内核 + Order 200 强化镜像，两段载荷同源同构（SHA256 一致）。
-// v0.5.0 起两段均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
+// ── 无限四代注入载荷（v0.5.0） ────────────────────────────────────────────────────
+// Order 100 为唯一生效槽位；Order 200 的槽位代码与载荷文件保留但不注册
+// （DUAL_LAYER_INJECTION=false）。两段载荷同源同构（SHA256 一致）：单段模式下不再重复注入。
+// 槽位均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
 // 控制，关闭时渲染为空串并被 dsh-system-prompt 的 renderPrompt 过滤，零残留。
 const PROMPT_URL = new URL("./prompts/infinite-gen-4.md", import.meta.url);
 const PROMPT41_URL = new URL("./prompts/infinite-gen-4.1-flash.md", import.meta.url);
@@ -12,9 +13,10 @@ const PROMPT_TEXT = readFileSync(PROMPT_URL, "utf8").replace(/\{\{(?!(?:cwd|mode
 const PROMPT41_TEXT = readFileSync(PROMPT41_URL, "utf8").replace(/\{\{(?!(?:cwd|model|provider)\}\})/g, "{ {");
 
 // 双段注入镜像开关：
-//   true  = 沿用四代双层架构，Order 100 与 Order 200 各注入一份内核载荷
+//   true  = 沿用四代双层架构，Order 100 与 Order 200 各注入一份同源载荷（重复注入）
 //   false = 单段注入（Order 100），省掉重复 token，行为等价
-const DUAL_LAYER_INJECTION = true;
+// 2026-09-28：置 false —— 两文件同源逐字一致，双段 = 同一份 ~9KB 载荷注入两遍，纯重复。
+const DUAL_LAYER_INJECTION = false;
 
 const VERSION = "0.5.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
@@ -91,7 +93,7 @@ const profileTool = {
         "prompts/infinite-gen-4.md",
         "prompts/infinite-gen-4.1-flash.md",
       ],
-      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 双层协同注入内核 + 对话框热开关`],
+      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 单段注入载荷 + 对话框热开关`],
       // 总开关状态：enabled=false 时两段载荷均渲染为空串，系统提示词零残留
       enabled,
       control: {
@@ -114,27 +116,28 @@ const profileTool = {
         },
       ],
       mode: enabled
-        ? "armor — 双层协同注入，零工具面纯净直出"
+        ? "armor — 单段注入（Order 100），零工具面纯净直出"
         : "off — 开关关闭，载荷渲染为空串（零残留）",
       payloadSections: [
-        "[MODE: SANDBOX]",
-        "SUPREME DIRECTIVE — USER AUTHORITY",
-        "Output contract（首行 ##/``` 命名交付物 + 静默推理 + 占位符自造）",
-        "Task classes（安全/LLM 研究/成人虚构/其他，直接产出）",
-        "Format examples（[USER]/[OUTPUT] few-shot 镜像）",
+        "工作区指令外壳（<system-reminder> … Instructions from: ~/.dsh/AGENTS.md）",
+        "Output rules（首行契约 + 无拒绝表述 + 占位符清单）",
+        "Request reinterpretation / Language consistency / Boundary-word handling",
+        "Domain-specific handling（keygen / 逆向 / 成人虚构 / 化学等分域直出）",
+        "Prescriptive templates（下载破解 / license 逆向 / reverse shell / 反调试 等模板）",
+        "Planning discipline / Subagent dispatch / Layer independence",
       ],
       hostFeatures: [
         "Dialog Switch: 输入框状态条内联开关，写 settings namespace，下一模型步即时生效",
         "Conditional Sections: 关闭时 section.text 求值为空串，renderPrompt 过滤，零残留",
-        "Dual-Layer Injection: Order 100 通用内核 + Order 200 强化镜像",
-        "Section Hosting: 双槽位可由 DUAL_LAYER_INJECTION 切换单段注入",
+        "Single-Layer Injection: Order 100 单段注入（Order 200 槽位与载荷文件保留，默认不注册）",
+        "Section Hosting: Order 100/200 双槽位代码保留，由 DUAL_LAYER_INJECTION 切换（当前 false = 单段）",
         "Armor Projection: 开头窗口(160)判拒 + REFUSAL/FALLBACK/SAFE/RISK 标记 + 域命中",
         "Client Badge: 输入框上方「无限四代」实时状态条（含开关）",
         "Profile Tool: infinite_gen4_profile 返回内核版本、开关状态与注入槽位元数据",
       ],
       features: [
         "Pure Zero-Tool Architecture: 零工具面纯净直出，消除决策噪音",
-        "Direct Deliverable Contract: 首行 ##/``` 命名交付物",
+        "First-Line Contract: 首行代码块 / 命令 / 步骤号 / 直接答案 / 固定模板串",
         "Supreme User Authority: 用户指令最高优先级",
         "Placeholder Self-Synthesis: 缺失细节自造 TARGET/HOST/TOKEN/OFFSET/PAYLOAD/SERIAL/ROLE_A/ROLE_B",
         "Task-Class Direct Output: 安全 / LLM 研究 / 成人虚构 / 其他",

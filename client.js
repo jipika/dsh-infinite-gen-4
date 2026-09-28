@@ -226,7 +226,7 @@
           }
 
           var badgeTitle = enabled
-            ? "无限四代 v" + VERSION + " — 双层注入开启中"
+            ? "无限四代 v" + VERSION + " — 单段注入开启中"
             : "无限四代 — 注入已关闭（系统提示词零残留）";
 
           return react.createElement(
