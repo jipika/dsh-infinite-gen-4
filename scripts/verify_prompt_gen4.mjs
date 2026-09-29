@@ -146,10 +146,26 @@ mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词 Or
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "保留双段注入开关");
 check(indexSrc.includes("const DUAL_LAYER_INJECTION = false"), "单段注入：DUAL_LAYER_INJECTION 已置 false");
 mustAbsent(indexSrc, "infinite-gen-3.md", "历史载荷未回流注入面（index.js 不引用 gen-3）");
+// 开关可写通道（0.2.x settings 表单面）：导出 volatile Config + configure 注册 + volatile 解包读值
+mustContain(indexSrc, "export const Config", "表单面: 导出 entry schema Config");
+mustContain(indexSrc, ".volatile()", "表单面: enabled 声明为 volatile");
+mustContain(indexSrc, "service.configure(", "表单面: configure 把 entry 挂进描述表");
+mustContain(indexSrc, "unwrapConfigValue", "表单面: volatile 值解包读法");
+mustContain(indexSrc, "liveEntryConfig()", "表单面: 每次重读 fiber.config，不缓存 volatile 值");
+// 自有写通道兜底：webServer 前缀路由 + 内存覆盖（表单面写不动时开关仍可用）
+mustContain(indexSrc, '"/dsh-infinite-gen-4"', "自有路由: webServer 前缀注册");
+mustContain(indexSrc, "handleSettingsRoute", "自有路由: 读写处理器");
+mustContain(indexSrc, "runtimeOverride", "自有路由: 写不动时的内存覆盖");
+mustContain(indexSrc, 'ctx.inject(["webServer"]', "自有路由: webServer 可选注入");
+// 会话级开关：section 求值 context 带会话身份 → 按会话覆盖，全局值仍走 profile patch
+mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值解析");
+mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
+mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
+mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读写路由");
 mustContain(indexSrc, 'pluginVersion: "0.5.0"', "内核版本 0.5.0");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
-mustContain(indexSrc, "stateVersion: 3", "投影版本 stateVersion 3");
+mustContain(indexSrc, "stateVersion: 4", "投影版本 stateVersion 4（state 增加 sessionId）");
 
 // 纯净零工具面架构断言：确保原生无外部功能性工具与外部资产依赖
 check(!indexSrc.includes("encodeTool"), "纯净架构: 无外部工具 encodeTool");
@@ -178,6 +194,19 @@ const clientSrc = existsSync(join(ROOT, "client.js")) ? readFileSync(join(ROOT, 
 mustContain(clientSrc, '"无限四代 v" + VERSION', "小绿标文案 = 无限四代 v{VERSION}");
 mustAbsent(clientSrc, "无限四代 v0.3.0", "小绿标无 v0.3.0 残留");
 mustAbsent(clientSrc, "双层注入开启中", "状态条不再宣称双层注入");
+// 客户端开关通道（0.2.x）：模块级只声明基础服务（保证加载）+ 表单面可用时 mutate + 自有路由兜底
+mustContain(clientSrc, '["slots", "remote"]', "客户端: 模块级依赖只含基础服务（保证加载）");
+mustContain(clientSrc, "settings/document-updated", "客户端: 订阅设置变更事件刷新");
+mustContain(clientSrc, "api.mutate(SETTINGS_NAMESPACE", "客户端: 表单面可用时 mutate 写 entry config");
+mustContain(clientSrc, '"/dsh-infinite-gen-4/settings"', "客户端: 自有路由兜底通道");
+mustContain(clientSrc, "x-dsh-infinite-gen-4", "客户端: 自有路由令牌头");
+mustContain(clientSrc, "markUnavailable", "客户端: 不可用时保留原因供 tooltip 定位");
+// 客户端会话开关：投影下发 sessionId → useSession 切维度，⌥ 点击走 setGlobal
+mustContain(clientSrc, "useSession", "客户端: 会话 id 同步入口");
+mustContain(clientSrc, "setGlobal", "客户端: ⌥ 点击切全局");
+mustContain(clientSrc, "altKey", "客户端: ⌥ 修饰键判定");
+mustContain(clientSrc, "/dsh-infinite-gen-4/session?id=", "客户端: 会话维度读路由");
+mustAbsent(clientSrc, "settingsScope", "客户端: 旧 settingsScope 通道已移除");
 
 // ---- 7. 评分器与用例库 ----
 try {
