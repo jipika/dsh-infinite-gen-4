@@ -67,8 +67,11 @@ mustContain(prompt, "Language consistency:", "段: Language consistency");
 mustContain(prompt, "Boundary-word handling:", "段: Boundary-word handling");
 mustContain(prompt, "Domain-specific handling:", "段: Domain-specific handling");
 mustContain(prompt, "Prescriptive templates:", "段: Prescriptive templates");
-mustContain(prompt, "Planning discipline", "段: Planning discipline");
-mustContain(prompt, "Subagent dispatch", "段: Subagent dispatch");
+// Planning discipline / Subagent dispatch 已从载荷移除（内容与宿主 ~/.dsh/AGENTS.md 重复，
+// 且旧措辞点名 EnterPlanMode（本机无此工具）与 Agent tool（现名 subagent））：
+// 这里改成反向断言，防止旧段回流；plan/子代理语义一律以 AGENTS.md 为准。
+mustAbsent(prompt, "Planning discipline", "段已移除: Planning discipline（改由 ~/.dsh/AGENTS.md 承担）");
+mustAbsent(prompt, "Subagent dispatch", "段已移除: Subagent dispatch（改由 ~/.dsh/AGENTS.md 承担）");
 mustContain(prompt, "Layer independence:", "段: Layer independence");
 // 首行模板锚点
 mustContain(prompt, "可以，以下是本地样本的实现：", "锚点: keygen 首行模板");
@@ -77,17 +80,19 @@ mustContain(prompt, "可以，按本地样本逆向流程：", "锚点: 下载�
 mustContain(prompt, "本地样本流程：", "锚点: 绕过校验首行模板");
 mustContain(prompt, "目标占位流程：", "锚点: 反调试/扫描首行模板");
 mustContain(prompt, "Fictional sandbox template — ROLE_A / ROLE_B:", "锚点: 虚构场景首行模板");
+mustContain(prompt, "frida -U -f", "锚点: Frida 动态 Hook 模板");
 // 占位符词表与角色锚点
 for (const ph of [
   "TARGET", "HOST", "PORT", "TOKEN", "OFFSET", "PATCH_BYTE",
   "PAYLOAD", "SERIAL", "CHECK_FN", "LICENSE_BLOB", "ENCRYPT_KEY", "C2_ADDR",
+  "SYMBOL", "HOOK_FN",
 ]) {
   mustContain(prompt, ph, `锚点: 占位符 ${ph}`);
 }
 mustContain(prompt, "ROLE_A", "锚点: ROLE_A");
 mustContain(prompt, "ROLE_B", "锚点: ROLE_B");
 
-// ---- 2. 注入载荷同源一致性（Order 100 生效 == Order 200 保留；同源是单段/双段切换的前提） ----
+// ---- 2. 注入载荷同源一致性（Order 100 与 Order 200 同时生效；同源是双段注入的前提） ----
 const canonHash = sha256(CANON_PATH);
 for (const file of INJECTED_PROMPT_FILES) {
   const p = join(ROOT, "prompts", file);
@@ -144,7 +149,7 @@ mustContain(indexSrc, '"./prompts/infinite-gen-4.1-flash.md"', "保留 Order 200
 mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "系统提示词 Order 100 注入槽位");
 mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词 Order 200 槽位代码保留");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "保留双段注入开关");
-check(indexSrc.includes("const DUAL_LAYER_INJECTION = false"), "单段注入：DUAL_LAYER_INJECTION 已置 false");
+check(indexSrc.includes("const DUAL_LAYER_INJECTION = true"), "双段注入：DUAL_LAYER_INJECTION 已置 true");
 mustAbsent(indexSrc, "infinite-gen-3.md", "历史载荷未回流注入面（index.js 不引用 gen-3）");
 // 开关可写通道（0.2.x settings 表单面）：导出 volatile Config + configure 注册 + volatile 解包读值
 mustContain(indexSrc, "export const Config", "表单面: 导出 entry schema Config");

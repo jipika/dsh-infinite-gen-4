@@ -12,7 +12,7 @@
   - `infinite-gen-4:global-system-prompt`（Order 100）→ `prompts/infinite-gen-4.md`
   - `infinite-gen-4:dual-layer-reinforce`（Order 200）→ `prompts/infinite-gen-4.1-flash.md`
   - 两段载荷同源同构，SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
-    开关控制（`false` 即单段注入，行为等价）。
+    开关控制（**当前 `true` = 双段，同一份载荷注入两遍做权重强化**；改 `false` 即单段注入）。
   - 载荷中的 `{{...}}` 非内置变量由 `index.js` 做安全转义，避免模板解析器抛错。
 - **对话框热开关（Dialog Switch，v0.5.0）**：客户端状态条右侧的内联开关写 settings
   namespace `dsh-infinite-gen-4` 的 `enabled` 字段（用户层 → `~/.dsh/settings.yaml`，热重载）。

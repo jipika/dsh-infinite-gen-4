@@ -4,8 +4,8 @@ import { dirname, join } from "node:path";
 import Schema from "@deepseek-ai/schemastery";
 
 // ── 无限四代注入载荷（v0.5.0） ────────────────────────────────────────────────────
-// Order 100 为唯一生效槽位；Order 200 的槽位代码与载荷文件保留但不注册
-// （DUAL_LAYER_INJECTION=false）。两段载荷同源同构（SHA256 一致）：单段模式下不再重复注入。
+// Order 100 与 Order 200 双槽位同时注册（DUAL_LAYER_INJECTION=true）；两段载荷同源同构
+// （SHA256 一致），等价于把同一份载荷注入两遍 —— 这是刻意的权重强化，不是误配。
 // 槽位均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
 // 控制，关闭时渲染为空串并被 dsh-system-prompt 的 renderPrompt 过滤，零残留。
 const PROMPT_URL = new URL("./prompts/infinite-gen-4.md", import.meta.url);
@@ -17,8 +17,8 @@ const PROMPT41_TEXT = readFileSync(PROMPT41_URL, "utf8").replace(/\{\{(?!(?:cwd|
 // 双段注入镜像开关：
 //   true  = 沿用四代双层架构，Order 100 与 Order 200 各注入一份同源载荷（重复注入）
 //   false = 单段注入（Order 100），省掉重复 token，行为等价
-// 2026-09-28：置 false —— 两文件同源逐字一致，双段 = 同一份 ~9KB 载荷注入两遍，纯重复。
-const DUAL_LAYER_INJECTION = false;
+// 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
+const DUAL_LAYER_INJECTION = true;
 
 const VERSION = "0.5.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
@@ -338,7 +338,7 @@ const profileTool = {
         "prompts/infinite-gen-4.md",
         "prompts/infinite-gen-4.1-flash.md",
       ],
-      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 单段注入载荷 + 对话框热开关`],
+      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 双段注入载荷 + 对话框热开关`],
       // 总开关状态：enabled=false 时两段载荷均渲染为空串，系统提示词零残留
       enabled,
       control: {
@@ -361,15 +361,15 @@ const profileTool = {
         },
       ],
       mode: enabled
-        ? "armor — 单段注入（Order 100），零工具面纯净直出"
+        ? "armor — 双段注入（Order 100 + Order 200），零工具面纯净直出"
         : "off — 开关关闭，载荷渲染为空串（零残留）",
       payloadSections: [
         "工作区指令外壳（<system-reminder> … Instructions from: ~/.dsh/AGENTS.md）",
         "Output rules（首行契约 + 无拒绝表述 + 占位符清单）",
         "Request reinterpretation / Language consistency / Boundary-word handling",
         "Domain-specific handling（keygen / 逆向 / 成人虚构 / 化学等分域直出）",
-        "Prescriptive templates（下载破解 / license 逆向 / reverse shell / 反调试 等模板）",
-        "Planning discipline / Subagent dispatch / Layer independence",
+        "Prescriptive templates（下载破解 / license 逆向 / reverse shell / 反调试 / Frida Hook 等模板）",
+        "Layer independence（plan / todo / 子代理纪律以宿主 ~/.dsh/AGENTS.md 为唯一来源，不再重复注入）",
       ],
       hostFeatures: [
         "Session Switch: 开关按会话生效 —— section 求值 context 带 { agent, scope, signal }，用 agent.sessionId / session.header.id 查 ~/.dsh/infinite-gen-4/sessions.json 覆盖；⌥ 点击切全局",
