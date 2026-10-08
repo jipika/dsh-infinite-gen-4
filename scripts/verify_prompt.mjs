@@ -117,8 +117,13 @@ mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "注入槽位 Order
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "双段注入开关");
 mustContain(indexSrc, 'pluginVersion: "0.5.0"', "内核版本 0.5.0");
 mustContain(indexSrc, "stateVersion: 3", "投影 stateVersion 3");
-mustContain(indexSrc, "OPENING_WINDOW", "开头窗口评分");
-mustContain(indexSrc, "RISK_MARKERS", "风险标记");
+// 评分器单源修订（2026-10-08 按上游 PR#21）：规则表位于 scripts/lib/scorer.mjs，
+// index.js 只做委托调用，不再维护第二份副本。
+mustContain(indexSrc, "scoreResponse", "评分器单源合并（index.js 委托 scorer.mjs）");
+const scorerSingleSrc = existsSync(join(ROOT, "scripts", "lib", "scorer.mjs"))
+  ? readFileSync(join(ROOT, "scripts", "lib", "scorer.mjs"), "utf8")
+  : "";
+mustContain(scorerSingleSrc, "RISK_MARKERS", "风险标记表位于 scorer.mjs 单源");
 
 // ---- 6. 一键安装协议（dsh://） ----
 const PS1_PATH = join(ROOT, "install.ps1");
