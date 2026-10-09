@@ -55,70 +55,121 @@ function loadPayloadTable() {
 const PAYLOADS = loadPayloadTable();
 /** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
 const PAYLOAD_IDS = ["dsh", "gpt61", "gpt6", "gpt56"];
-/** 分流规则：**按具体度降序短路** —— gpt-6.1 必须排在 gpt-6 之前，否则 6.1 会被 6 吃掉。 */
-const PAYLOAD_RULES = [
-  [/^gpt-6\.1(?!\d)/i, "gpt61"],
-  [/^gpt-6(?!\.)/i, "gpt6"],
-  [/^gpt-5\.6(?!\d)/i, "gpt56"],
-  [/^gpt-5(?!\.)/i, "gpt56"],
-  [/^o[0-9]/i, "gpt56"],
-  [/^codex/i, "gpt56"],
-];
-
 /**
- * 判断一个 model id 是否属于 GPT（OpenAI）系 —— 用于「其他 gpt-* 走最近代」的兜底。
- * @param {string} model 模型 id。
- * @returns {boolean} 是否 GPT 系。
+ * GPT 家族判定：**锚定开头**，只认自家命名，不吃 `my-gpt-6-clone` 这类仿冒名。
+ * `chat` 前缀也认（`chatgpt-6.1` 是常见产品形态）。
  */
-function isGptFamily(model) {
-  return /^(gpt|o[0-9]|codex)/i.test(String(model ?? ""));
+const GPT_FAMILY_RE = /^(?:chat)?gpt|^o\d|^codex|^astra|^luna/;
+/**
+ * 已知代次的**显式枚举**：多位数（≥2 位数字自成一段）时的还原表。
+ * 不用「数值阈值猜拆法」——`major >= 40` 那种判据只在 41/56/61 恰好落窗口时成立，
+ * 未来出现真主版本 30-39 或 40+ 就会系统性错判。这里只还原认识的代次，
+ * 其余一律当「版本不可解析」交给兜底，判定集合有限且可断言。
+ */
+const GLUED_VERSIONS = { 35: [3, 5], 41: [4, 1], 56: [5, 6], 61: [6, 1] };
+/**
+ * 从模型名里抽版本号 —— 容忍真实世界里各种「不太一样」的写法：
+ *   `gpt-6.1-sol` / `GPT_6_1_SOL` / `gpt 6.1` / `gpt.6.1.sol` / `gpt6.1sol` /
+ *   `chatgpt-6.1` / `gpt61`（粘连） / `gpt-35-turbo`（旧命名，走枚举表）
+ * 分隔符允许 `- _ . 空格` 任意组合（0 个或多个）。
+ *
+ * **小版本的判据是「数字段长度 ≤ 2」而不是「固定 1 位」** —— 这样：
+ *   `gpt-5.10`（段长 2）→ 5.10；`gpt-6-0613`（段长 4，是日期戳）→ 只有主版本 6。
+ * 负向断言 `(?!\d)` 保证不吃进更长数字段的前缀。
+ * @param {string} id 已归一化（小写、无 provider 前缀）的模型名。
+ * @returns {{major: number, minor: number}|undefined} 版本号，解析不出时 undefined。
+ */
+function extractGptVersion(id) {
+  const GLUE = "[\\s._-]*";
+  const m = new RegExp(`^(?:chat)?gpt${GLUE}(\\d{1,3})(?:${GLUE}(\\d{1,2})(?!\\d))?`).exec(id);
+  if (m === null) return undefined;
+  const major = Number.parseInt(m[1], 10);
+  if (!Number.isFinite(major)) return undefined;
+  if (m[2] !== undefined) {
+    const minor = Number.parseInt(m[2], 10);
+    if (Number.isFinite(minor)) return { major, minor };
+  }
+  // 无小版本：主版本若是多位数，查枚举表（`gpt-61` 同 `gpt-6.1`）；不在表里就是未知代次
+  if (m[1].length >= 2) {
+    const known = GLUED_VERSIONS[major];
+    return known === undefined ? undefined : { major: known[0], minor: known[1] };
+  }
+  return { major, minor: 0 };
 }
 
 /**
- * 未知代次的 GPT 模型兜底：抽 `gpt-<n>[.<n>]` 取**最大版本号**，落在最近代载荷。
- * 例：未来出现 `gpt-7-x` → 走 gpt61（当前最新代），而不是错落到 5.6。
- * @param {string} model 模型 id。
+ * 版本号 → 载荷 id。
+ *   >6 或 ==6 && minor>=1 → gpt61（6.1 及更新）
+ *   ==6                   → gpt6
+ *   其余（<=5.x）         → gpt56
+ * @param {{major: number, minor: number}} version 版本号。
  * @returns {string} 载荷 id。
  */
-function newestGptPayload(model) {
-  const m = /^gpt-(\d+(?:\.\d+)?)/i.exec(String(model ?? ""));
-  if (m === null) return "gpt56";
-  const version = Number.parseFloat(m[1]);
-  if (!Number.isFinite(version)) return "gpt56";
-  if (version > 6) return "gpt61";
-  if (version > 5.6) return "gpt6";
+function payloadForVersion(version) {
+  if (version.major > 6) return "gpt61";
+  if (version.major === 6) return version.minor >= 1 ? "gpt61" : "gpt6";
   return "gpt56";
 }
 
 /**
- * 归一化模型 id：剥掉 provider 前缀（`openai/gpt-6` → `gpt-6`）与首尾空白。
- * 本机 model 都是裸名，但网关/中转可能下发 `provider/model` 形态 —— 不剥的话
- * 这类 id 会一路落到「非 GPT」分支、静默走错载荷。
+ * 判断一个 model id 是否属于 GPT（OpenAI）系 —— 用于「其他 gpt-* 走最近代」的兜底。
+ * @param {string} model 模型 id（建议传归一化后的）。
+ * @returns {boolean} 是否 GPT 系。
+ */
+function isGptFamily(model) {
+  return GPT_FAMILY_RE.test(String(model ?? ""));
+}
+
+/**
+ * 归一化模型 id：trim + 转小写 + 剥 provider 前缀 + 剥 `:` 标签后缀。
+ *   `  OpenAI/GPT-6.1-SOL  ` → `gpt-6.1-sol`
+ *   `deepseek/deepseek-v4-flash:free` → `deepseek-v4-flash`
+ * 本机 model 多是裸名，但网关 / 中转 / 各家 SDK 会下发各种组合形态 —— 不归一化
+ * 就会一路落到「非 GPT」分支、静默走错载荷。
  * @param {unknown} model 原始模型 id。
  * @returns {string} 归一化后的 id。
  */
 function normalizeModelId(model) {
-  const raw = String(model ?? "").trim();
-  if (raw.length === 0) return "";
-  const slash = raw.lastIndexOf("/");
-  return slash >= 0 && slash < raw.length - 1 ? raw.slice(slash + 1) : raw;
+  let id = String(model ?? "").trim().toLowerCase();
+  if (id.length === 0) return "";
+  // 剥 `:` 标签（openrouter 系 `:free` / `:nitro`）——只剥最后一个标签段
+  const colon = id.lastIndexOf(":");
+  if (colon > 0 && colon < id.length - 1) id = id.slice(0, colon).trim();
+  // 剥 provider 前缀（`vendor/model`）。**尾随斜杠整段丢掉，取斜杠前的有效名**：
+  // `gpt-6/` 与 `vendor/gpt-6/` 都应得到 `gpt-6`，而不是空串（空串会退化成 dsh）。
+  id = id.replace(/\/+$/, "");
+  const slash = id.lastIndexOf("/");
+  if (slash >= 0) id = id.slice(slash + 1);
+  return id.trim();
 }
 
 /**
- * 按模型身份选载荷 id —— **按 model 名匹配，不按 provider**。
+ * 按模型身份选载荷 id —— **按 model 名解析版本，不按 provider**。
  * 理由（本机实测）：`gpt-6.1-sol` 同时挂在 `gpt` 与 `heihei` 两个 provider 下，
  * 只看 provider 必然漏掉后者。
+ *
+ * 解析顺序（容忍各种「不太一样」的写法，不靠规则表顺序）：
+ *   ① 归一化 → ② 抽版本号 → ③ 版本 → 载荷
+ *   ④ 版本抽不出但确属 GPT 系 → 按家族特征兜底
+ *   ⑤ 非 GPT 系 → DSH 自持载荷
  * @param {string|undefined} model 当前模型 id（agent.options.model）。
- * @returns {string} 载荷 id（未知一律回落 "dsh"）。
+ * @returns {string} 载荷 id。
  */
 function matchPayloadId(model) {
   const id = normalizeModelId(model);
   if (id.length === 0) return "dsh";
-  for (const [pattern, payloadId] of PAYLOAD_RULES) {
-    if (pattern.test(id)) return payloadId;
-  }
-  // GPT 系但代次未列在上表：取最大版本号落到最近代；非 GPT 系一律 DSH 自持载荷
-  return isGptFamily(id) ? newestGptPayload(id) : "dsh";
+  const version = extractGptVersion(id);
+  if (version !== undefined) return payloadForVersion(version);
+  // ── 版本不可解析：先判家族，再按家族特征保守兜底 ────────────────────────
+  if (!isGptFamily(id)) return "dsh";
+  // o 系 / codex 系历史上是 5.x 一脉
+  if (/^(?:o\d|codex)/.test(id)) return "gpt56";
+  if (/^astra/.test(id)) return "gpt6";
+  if (/^luna/.test(id)) return "gpt61";
+  // 其余 gpt* 解析不出代次：**保守取最近代**（gpt61）而不是旧代 ——
+  // 新模型用旧载荷会失效，旧模型用新载荷最多是措辞不完全贴合；
+  // 二者不对称，故选「宁可新，不可旧」。
+  return "gpt61";
 }
 
 // 双段注入镜像开关：

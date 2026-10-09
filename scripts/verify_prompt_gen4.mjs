@@ -198,19 +198,25 @@ mustContain(indexSrc, "resolvePayloadId", "载荷分流: 解析入口存在");
 mustContain(indexSrc, "modelOf", "载荷分流: 取当前模型 id");
 mustContain(indexSrc, "options?.model", "载荷分流: 按 agent.options.model 判定（官方取法）");
 mustContain(indexSrc, "isGptFamily", "载荷分流: GPT 系判定");
-mustContain(indexSrc, "newestGptPayload", "载荷分流: 未知代次按最大版本兜底");
-mustContain(indexSrc, "PAYLOAD_RULES", "载荷分流: 规则表存在");
+mustContain(indexSrc, "extractGptVersion", "载荷分流: 版本号语义解析（容忍各种写法）");
+mustContain(indexSrc, "payloadForVersion", "载荷分流: 版本 → 载荷映射");
+mustContain(indexSrc, "GLUED_VERSIONS", "载荷分流: 粘连多位数的显式枚举还原表");
+mustContain(indexSrc, "GPT_FAMILY_RE", "载荷分流: 家族判定正则（锚定开头）");
 check(indexSrc.includes("const DUAL_LAYER_INJECTION = true"), "双段开关仍为 true（DSH 自持载荷双段）");
 mustContain(indexSrc, "gatedReinforce", "载荷分流: order 200 分支求值器（GPT 单段）");
-// 正则优先级：gpt-6.1 必须排在 gpt-6 之前，否则 6.1 被 6 吃掉
-{
-  const rulesIdx = indexSrc.indexOf("const PAYLOAD_RULES");
-  const seg = rulesIdx >= 0 ? indexSrc.slice(rulesIdx, rulesIdx + 400) : "";
-  const pos61 = seg.indexOf("gpt-6\\.1");
-  const pos6 = seg.indexOf("gpt-6(?!");
-  check(pos61 >= 0 && pos6 >= 0 && pos61 < pos6,
-    "载荷分流: gpt-6.1 规则先于 gpt-6（短路顺序）", `pos61=${pos61} pos6=${pos6}`);
-}
+// 版本解析的关键性质（原「规则表顺序」断言已随语义解析重写而废弃）
+check(!indexSrc.includes("PAYLOAD_RULES"),
+  "载荷分流: 已废弃靠规则表顺序的旧实现（改为版本号数值比较，天然无顺序问题）");
+check(indexSrc.includes("GLUE = \"[\\\\s._-]*\""),
+  "载荷分流: 分隔符类含空格/点/下划线/连字符（容忍 gpt 6.1 / gpt_6_1 / gpt.6.1）");
+check(indexSrc.includes("(?:chat)?gpt"),
+  "载荷分流: 认 chat 前缀（chatgpt-6.1）");
+// 归一化：provider 前缀 + 标签后缀 + 尾随斜杠
+mustContain(indexSrc, "normalizeModelId", "载荷分流: 模型名归一化");
+check(indexSrc.includes('replace(/\\/+$/, "")'),
+  "载荷分流: 尾随斜杠先剥再取（gpt-6/ 不退化成空串）");
+check(indexSrc.includes("lastIndexOf(\":\")"),
+  "载荷分流: 剥 `:` 标签后缀（openrouter 的 :free）");
 // 配置项：mode(自动/手动) + manualPayload，与 enabled 同为 volatile
 mustContain(indexSrc, "MANUAL_PAYLOAD_FIELD", "配置: manualPayload 字段常量");
 mustContain(indexSrc, "MODE_FIELD", "配置: mode 字段常量");

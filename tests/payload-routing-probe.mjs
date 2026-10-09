@@ -144,21 +144,57 @@ if (typeof handler === "function") {
     ["o3-mini", "gpt56"],
     ["codex-mini", "gpt56"],
     ["gpt-7-future", "gpt61"],
+    ["gpt-10", "gpt61"],           // 未来 10 代（两位主版本，不被当粘连拆）
     ["deepseek-v4.1-flash", "dsh"],
     ["glm-5.3", "dsh"],
     ["claude-opus-5-5", "dsh"],
+    ["gemini-3.8-flash-high", "dsh"],
     ["", "dsh"],
     [undefined, "dsh"],
-    // ── 边界用例（真实最易翻车的输入形态） ──────────────────────────────
-    ["GPT-6.1-SOL", "gpt61"],      // 大小写混合
+    // ── 写法变体：分隔符 / 大小写 / 前缀 / 后缀 ────────────────────────────
+    ["GPT_6_1_SOL", "gpt61"],      // 下划线分隔 + 全大写
+    ["gpt_6_1_sol", "gpt61"],      // 下划线分隔
+    ["gpt6.1sol", "gpt61"],        // 连字符缺失
+    ["gpt 6.1", "gpt61"],          // 空格分隔
+    ["gpt.6.1.sol", "gpt61"],      // 点号分隔
+    ["gpt-6.1-sol", "gpt61"],      // 标准
+    ["GPT-6.1-SOL", "gpt61"],      // 全大写
     ["  gpt-6-sol  ", "gpt6"],     // 首尾空白
-    ["openai/gpt-6", "gpt6"],      // 带 provider 前缀（斜杠）—— 不归一化会落到 dsh
+    ["chatgpt-6.1", "gpt61"],      // chat 前缀
+    ["ChatGPT_6_1", "gpt61"],      // chat + 下划线
+    ["gpt-6.1-sol-2026-10", "gpt61"], // 日期后缀
+    ["gpt-6.1-turbo", "gpt61"],    // 档位后缀
+    ["gpt-6.1-sol-preview", "gpt61"],
+    // ── 粘连：多位数按显式枚举还原（不是靠数值阈值猜） ─────────────────────
+    ["gpt61", "gpt61"],
+    ["gpt56", "gpt56"],
+    ["gpt41", "gpt56"],            // 4.1 已淘汰，但解析正确 → 落旧代
+    // ── provider 前缀 / 标签后缀 / 斜杠 ────────────────────────────────────
+    ["openai/gpt-6", "gpt6"],      // 不归一化会落到 dsh
     ["openai/gpt-6.1-sol", "gpt61"],
-    ["anthropic/claude-opus-5-5", "dsh"], // 带前缀的非 GPT 仍是 dsh
-    ["gpt-6", "gpt6"],             // 裸 gpt-6 无后缀
-    ["gpt-6.10", "gpt61"],         // 易错：版本号数值比较
+    ["a/b/c/gpt-6.1-sol", "gpt61"],// 多段斜杠
+    ["openai/gpt-6.1-sol:free", "gpt61"], // 前缀 + 标签后缀
+    ["/gpt-6", "gpt6"],            // 前导斜杠
+    ["gpt-6/", "gpt6"],            // 尾随斜杠（不该退化成空串）
+    ["  openai/gpt-6  ", "gpt6"],  // 空白 + 斜杠混合
+    ["openai/", "dsh"],            // 仅前缀无模型名
+    ["anthropic/claude-opus-5-5", "dsh"], // 带前缀的非 GPT
+    // ── 小数代次（按数字段长度判定，不靠字典序） ──────────────────────────
+    ["gpt-6", "gpt6"],             // 裸 6 代无后缀
+    ["gpt-6.10", "gpt61"],         // 两位 minor
     ["gpt-5.10", "gpt56"],
-    ["gpt-4o", "gpt56"],           // 旧代 gpt-4o（不认识的代次按最大版本兜底）
+    // ── 日期戳形态：3-4 位数字段是构建号，不是小版本 ──────────────────────
+    ["gpt-4-0613", "gpt56"],       // 不能被读成 4.0613
+    ["gpt-6-0613", "gpt6"],        // 不能被读成 6.0613
+    ["gpt-4-turbo-2024-04-09", "gpt56"],
+    ["gpt-35-turbo", "gpt56"],     // Azure 旧命名（枚举表里是 3.5）
+    ["gpt-3.5-turbo", "gpt56"],
+    ["gpt-4o", "gpt56"],
+    ["gpt-4", "gpt56"],
+    // ── 家族判定锚定开头：仿冒名不吃 ───────────────────────────────────────
+    ["my-gpt-6-clone", "dsh"],
+    ["a/b/my-gpt-6-clone", "dsh"],
+    ["astra-whatever", "gpt6"],    // astra 是 6 代命名
   ];
   for (const [model, want] of CASES) {
     const got = identify(primary({ agent: { options: { model } } }));
