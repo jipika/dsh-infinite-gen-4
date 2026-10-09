@@ -59,6 +59,10 @@ for (const [rel, want] of Object.entries(SOURCES)) {
 const sections = new Map();
 const routes = [];
 const tools = [];
+// 默认模型服务的桩：**默认返回空对象**（＝服务在但没给值），
+// 这样既有的矩阵用例仍走 agent.options 那一层，不被这层兜底吃掉；
+// 专测「首步」场景时再临时设为有值（见下方 firstStep 用例）。
+let defaultModelPick = {};
 const mockCtx = {
   fiber: { config: {} },
   effect: (fn) => { try { fn(); } catch { /* 探针里忽略生命周期细节 */ } },
@@ -69,6 +73,7 @@ const mockCtx = {
     variable: () => () => {},
   },
   tools: { register: (t) => { tools.push(t); return () => {}; } },
+  agentDefaultModel: { currentSelection: () => defaultModelPick },
 };
 mod.apply(mockCtx);
 check(sections.has("infinite-gen-4:global-system-prompt"), "注册了 order 100 槽位");
@@ -227,12 +232,44 @@ if (typeof handler === "function") {
   check(viaSession2 === "dsh",
     "auto: 会话实际模型(dfmodel) 优先，不被 agent.options 的 gpt 名盖过",
     `实得 ${viaSession2}`);
-  // 兜底：会话尚未发出请求（无 requestHeader）时回落 agent.options
+  // 兜底：会话尚未发出请求（无 requestHeader）且默认模型服务没给值时，回落 agent.options
   const freshAgent = { options: { provider: "gpt", model: "gpt-6-sol" }, session: {} };
   const viaFallback = identify(primary({ agent: freshAgent, scope: freshAgent }));
   check(viaFallback === "gpt6",
     "auto: 无 requestHeader 时回落 agent.options",
     `实得 ${viaFallback}`);
+
+  // ── 回归锁：首步（无 requestHeader）必须读「当前默认模型」，不能读陈旧的 agent.options ──
+  // 根因记录（2026-10-09 实测）：某新会话首步注入了 GPT 载荷而它用的是 deepseek 模型 ——
+  // 因为首步时本会话还没写过 request/header，而 agent.options 停在 agent 创建时的旧模型上
+  // （options 是 readonly，用户切过默认模型也不会更新）。修法：中间加一层
+  // agentDefaultModel.currentSelection()（官方 selectionFor 的第三级）。
+  defaultModelPick = { provider: "deepseek-official", model: "deepseek-flash" };
+  const firstStepAgent = {
+    options: { provider: "openai-codex", model: "gpt-6.1-sol" },   // 陈旧值
+    session: { requestHeader: () => undefined },                    // 首步：无 header
+  };
+  const viaFirstStep = identify(primary({ agent: firstStepAgent, scope: firstStepAgent }));
+  check(viaFirstStep === "dsh",
+    "auto 首步: 读当前默认模型(deepseek-flash)，而非陈旧的 agent.options(gpt-6.1-sol)",
+    `实得 ${viaFirstStep}`);
+  // 首步 + 当前默认模型是 GPT 时，应给 GPT 载荷
+  defaultModelPick = { provider: "openai-codex", model: "gpt-6.1-sol" };
+  const viaFirstStepGpt = identify(primary({ agent: firstStepAgent, scope: firstStepAgent }));
+  check(viaFirstStepGpt === "gpt61",
+    "auto 首步: 当前默认模型为 GPT 时给 GPT 载荷",
+    `实得 ${viaFirstStepGpt}`);
+  // requestHeader 仍优先于默认模型（已发过请求的会话不受默认模型影响）
+  defaultModelPick = { provider: "openai-codex", model: "gpt-6.1-sol" };
+  const loggedAgent = {
+    options: {},
+    session: { requestHeader: () => ({ config: { provider: "deepseek-official", model: "deepseek-flash" } }) },
+  };
+  const viaLogged = identify(primary({ agent: loggedAgent, scope: loggedAgent }));
+  check(viaLogged === "dsh",
+    "auto: requestHeader 优先于默认模型",
+    `实得 ${viaLogged}`);
+  defaultModelPick = {};   // 还原桩，避免影响后续用例
 
   // order 200：GPT 系必须为空串，DSH 必须非空
   for (const [model, wantEmpty] of [["gpt-6.1-sol", true], ["gpt-6-sol", true], ["gpt-7-x", true], ["deepseek-v4.1-flash", false]]) {

@@ -295,6 +295,9 @@ let hostCtx;
 let entryConfig;
 // settings 服务句柄：自有写通道优先经它持久化（写盘落点 = profile patch）
 let settingsService;
+// 默认模型服务句柄：自动分流在「会话还没写过 request/header」时用它拿当前默认模型。
+// 它是可选依赖 —— 服务缺席时 modelOf 继续向下回落到 agent.options，不影响其余功能。
+let agentDefaultModelService;
 // 兜底覆盖：settings 表单面写不动时（entry 无 volatile 字段 / 服务缺席）让开关仍能立即生效；
 // 只存内存，进程重启后回到 config 真值。按字段存（enabled / mode / manualPayload）。
 /** @type {Record<string, unknown>|undefined} */
@@ -626,17 +629,43 @@ function resolvePayloadId(context) {
 function modelOf(context) {
   try {
     const agent = context?.agent;
-    // ① 会话实际请求头（反映会话内切换后的真实模型）
+    // ① 会话实际请求头（反映会话内切换后的真实模型）—— 最可靠
     const logged = agent?.session?.requestHeader?.();
     const loggedModel = logged?.config?.model;
     if (typeof loggedModel === "string" && loggedModel.length > 0) return loggedModel;
-    // ② 创建时声明的路由（兜底：会话还没发出过请求时）
+    // ② 当前默认模型。**首步（本会话还没写过 request/header）时必须走这层**：
+    //    `agent.options.model` 是 agent 创建那一刻冻结的值，若那之后用户切过默认模型，
+    //    它会停在一个陈旧名字上 —— 实测踩过：某会话首步据此判成 GPT、次步才纠正为 DSH。
+    //    官方 `selectionFor(agent).current` 的第三级也是 defaultModel，而不是 agent.options。
+    const picked = currentDefaultModelOf(agent);
+    if (typeof picked === "string" && picked.length > 0) return picked;
+    // ③ agent 创建时声明的路由（最终兜底）
     const declared = agent?.options?.model;
     if (typeof declared === "string" && declared.length > 0) return declared;
     return undefined;
   } catch {
     return undefined;
   }
+}
+
+/**
+ * 读「当前默认模型」——`agentDefaultModel.currentSelection().model`。
+ * 服务缺席（未挂载 / 尚未回调）时返回 undefined，由调用方继续向下回落。
+ * @param {object|undefined} agent host agent 对象（仅用于兜底取值，实际不依赖它）。
+ * @returns {string|undefined} 当前默认模型 id。
+ */
+function currentDefaultModelOf(agent) {
+  try {
+    const service = agentDefaultModelService;
+    if (service !== undefined && typeof service.currentSelection === "function") {
+      const picked = service.currentSelection();
+      const model = picked?.model;
+      if (typeof model === "string" && model.length > 0) return model;
+    }
+  } catch {
+    /* 服务在卸载窗口可能抛错：静默回落 */
+  }
+  return undefined;
 }
 
 /**
@@ -650,6 +679,12 @@ function providerOf(context) {
     const logged = agent?.session?.requestHeader?.();
     const loggedProvider = logged?.config?.provider;
     if (typeof loggedProvider === "string" && loggedProvider.length > 0) return loggedProvider;
+    try {
+      const picked = agentDefaultModelService?.currentSelection?.();
+      if (typeof picked?.provider === "string" && picked.provider.length > 0) return picked.provider;
+    } catch {
+      /* 同上 */
+    }
     const declared = agent?.options?.provider;
     if (typeof declared === "string" && declared.length > 0) return declared;
     return undefined;
@@ -902,6 +937,16 @@ export function apply(ctx) {
       "infinite-gen-4: settings route",
     );
   });
+
+  // ── 0.6 默认模型服务（可选依赖）──────────────────────────────────────────────
+  // 自动分流在「本会话还没写过 request/header」的首步需要它：agent.options.model 是
+  // agent 创建时冻结的值，可能停在用户切走前的旧模型上（实测踩过首步错配）。
+  // 服务缺席只是少一层兜底，不影响其余功能 —— 所以单列一个 inject，不并进模块级 inject。
+  if (typeof ctx.inject === "function") {
+    ctx.inject(["agentDefaultModel"], (mctx) => {
+      agentDefaultModelService = mctx.agentDefaultModel;
+    });
+  }
 
   // ── 1. 条件提示词段：开关关闭时渲染为空串（renderPrompt 过滤，零残留） ────────
   // 载荷按「手动指定 / 当前模型身份」动态选择：GPT 系走 Codex 载荷，其余走 DSH 自持载荷。

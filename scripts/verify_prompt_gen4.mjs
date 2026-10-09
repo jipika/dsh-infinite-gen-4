@@ -197,6 +197,19 @@ mustContain(indexSrc, "matchPayloadId", "载荷分流: 匹配函数存在");
 mustContain(indexSrc, "resolvePayloadId", "载荷分流: 解析入口存在");
 mustContain(indexSrc, "modelOf", "载荷分流: 取当前模型 id");
 mustContain(indexSrc, "options?.model", "载荷分流: 按 agent.options.model 判定（官方取法）");
+// 模型取值链三级（顺序不可颠倒）——每级都要在，且默认模型那层必须在 options 之前
+mustContain(indexSrc, "requestHeader", "取值链①: 会话实际请求头");
+mustContain(indexSrc, "currentDefaultModelOf", "取值链②: 当前默认模型（首步兜底）");
+mustContain(indexSrc, "agentDefaultModelService", "取值链②: 默认模型服务句柄");
+mustContain(indexSrc, 'ctx.inject(["agentDefaultModel"]', "取值链②: 服务注入（可选依赖）");
+{
+  const iLogged = indexSrc.indexOf("agent?.session?.requestHeader?.()");
+  const iDefault = indexSrc.indexOf("currentDefaultModelOf(agent)");
+  const iOptions = indexSrc.indexOf("agent?.options?.model");
+  check(iLogged >= 0 && iDefault > iLogged && iOptions > iDefault,
+    "取值链顺序: requestHeader → 默认模型 → agent.options（不可颠倒）",
+    `位置 ${iLogged} / ${iDefault} / ${iOptions}`);
+}
 mustContain(indexSrc, "isGptFamily", "载荷分流: GPT 系判定");
 mustContain(indexSrc, "extractGptVersion", "载荷分流: 版本号语义解析（容忍各种写法）");
 mustContain(indexSrc, "payloadForVersion", "载荷分流: 版本 → 载荷映射");
