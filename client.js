@@ -20,7 +20,7 @@
            默认关闭：host 半 DEFAULT_ENABLED = false，未写 settings.yaml 时开关与状态条均为「已关闭」 */
         var SETTINGS_NAMESPACE = "dsh-infinite-gen-4";
         var SETTINGS_FIELD = "enabled";
-        var VERSION = "0.5.0";
+        var VERSION = "0.6.0";
 
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
@@ -53,7 +53,20 @@
           ".dsh-armor-switch:disabled{cursor:default;opacity:.5}" +
           ".dsh-armor-switch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}" +
           ".dsh-armor-switch-thumb{display:block;width:16px;height:16px;border-radius:50%;corner-shape:round;background:var(--dsw-alias-label-primary-foreground);transition:transform 120ms ease}" +
-          ".dsh-armor-switch[aria-checked='true'] .dsh-armor-switch-thumb{transform:translateX(16px)}";
+          ".dsh-armor-switch[aria-checked='true'] .dsh-armor-switch-thumb{transform:translateX(16px)}" +
+          // ── 设置页 tab（载荷路由）────────────────────────────────────────────
+          ".dsh-armor-settings{display:flex;flex-direction:column;gap:12px;font-family:inherit;font-size:13px;color:var(--dsw-alias-label-primary)}" +
+          ".dsh-armor-s-title{font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary)}" +
+          ".dsh-armor-s-desc{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}" +
+          ".dsh-armor-s-row{display:flex;align-items:flex-start;gap:12px}" +
+          ".dsh-armor-s-label{flex:0 0 48px;padding-top:5px;font-size:12px;color:var(--dsw-alias-label-secondary)}" +
+          ".dsh-armor-seg,.dsh-armor-list{display:flex;flex-wrap:wrap;gap:6px;min-width:0}" +
+          ".dsh-armor-opt{box-sizing:border-box;height:28px;padding:0 12px;border-radius:14px;border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:12px;line-height:1;cursor:pointer;transition:background 120ms ease,color 120ms ease}" +
+          ".dsh-armor-opt:hover:not(:disabled){background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}" +
+          ".dsh-armor-opt[data-active='true']{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-foreground)}" +
+          ".dsh-armor-opt:disabled{cursor:default;opacity:.5}" +
+          ".dsh-armor-opt:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}" +
+          ".dsh-armor-s-note{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}";
 
         /* 样式表只注入一次，且在组件之外完成：dock 按会话挂载，放在 effect 里会让
            多个会话并发插入同一张表（getElementById 无法防住同一 tick 内的竞态）。 */
@@ -207,10 +220,26 @@
               });
             });
           };
+          /**
+           * 写配置：自有路由优先（host 内部会先试着持久化到 profile patch），失败再退表单面。
+           * @param {object} patch 要写的字段（{enabled?, mode?, manualPayload?}）。
+           * @param {string} [scope] 传 "global" 强制写全局（⌥ 点击走这条）。
+           */
+          var writePatch = function (patch, scope) {
+            var session = scope !== "global" && hasSession();
+            return fetch(session ? "/dsh-infinite-gen-4/session" : "/dsh-infinite-gen-4/settings", {
+              method: "POST",
+              headers: httpHeaders(true),
+              body: JSON.stringify(session ? { sessionId: sessionId, enabled: patch.enabled } : patch)
+            }).then(
+              function (response) { return response.ok ? response.json() : void 0; },
+              function () { return void 0; }
+            );
+          };
           /** 写开关：自有路由优先（host 内部会先试着持久化到 profile patch），失败再退表单面。 */
           var write = function (value, scope) {
             var toRemote = function () { return writeViaRemote(value).then(sync, function () { return sync(); }); };
-            return httpPost(value, scope).then(
+            return writePatch({ enabled: value }, scope).then(
               function (payload) {
                 if (payload !== void 0 && payload.ok === true) return sync();
                 return toRemote();
@@ -257,6 +286,77 @@
         }
 
         var setting = createSettingSource();
+
+        /**
+         * 载荷路由状态源（mode / manualPayload / payloads 清单 / 当前生效项）。
+         * 只走 host 自有路由 /dsh-infinite-gen-4/settings（GET 读 / POST 写）——
+         * 表单面对多字段的支持取决于 entry schema 是否 volatile，自有路由是无条件可用的那条。
+         * 与 setting 同款：外部 store 缓存 + useSyncExternalStore 稳定引用。
+         */
+        function createRoutingSource() {
+          var state = { mode: "auto", manualPayload: "dsh", payloads: [], status: "loading", reason: "" };
+          var listeners = new Set();
+          var publish = function (next) {
+            var reason = next.reason === void 0 ? "" : next.reason;
+            if (next.mode === state.mode && next.manualPayload === state.manualPayload
+              && next.status === state.status && reason === state.reason
+              && next.payloads === state.payloads) return;
+            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, status: next.status, reason: reason };
+            listeners.forEach(function (listener) { listener(); });
+          };
+          var sync = function () {
+            return fetch("/dsh-infinite-gen-4/settings", { headers: { "x-dsh-infinite-gen-4": "1" } }).then(
+              function (response) { return response.ok ? response.json() : void 0; },
+              function () { return void 0; }
+            ).then(function (payload) {
+              if (payload === void 0 || payload.ok !== true) {
+                publish({ mode: state.mode, manualPayload: state.manualPayload, payloads: state.payloads, status: "unavailable", reason: "host 路由不可用" });
+                return;
+              }
+              publish({
+                mode: payload.mode === "manual" ? "manual" : "auto",
+                manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : "dsh",
+                payloads: Array.isArray(payload.payloads) ? payload.payloads : [],
+                status: "ready"
+              });
+            });
+          };
+          /** 写路由字段：成功后 re-sync 拉回权威值（host 可能钳制/回落）。 */
+          var write = function (patch) {
+            return fetch("/dsh-infinite-gen-4/settings", {
+              method: "POST",
+              headers: { "x-dsh-infinite-gen-4": "1", "content-type": "application/json" },
+              body: JSON.stringify(patch)
+            }).then(
+              function (response) { return response.ok ? response.json() : void 0; },
+              function () { return void 0; }
+            ).then(function (payload) {
+              if (payload !== void 0 && payload.ok === true) {
+                publish({
+                  mode: payload.mode === "manual" ? "manual" : "auto",
+                  manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : state.manualPayload,
+                  payloads: state.payloads,
+                  status: "ready"
+                });
+              }
+              return sync();
+            });
+          };
+          return {
+            store: {
+              subscribe: function (listener) {
+                listeners.add(listener);
+                return function () { listeners.delete(listener); };
+              },
+              getSnapshot: function () { return state; }
+            },
+            refresh: sync,
+            setMode: function (mode) { return write({ mode: mode }); },
+            setManualPayload: function (id) { return write({ manualPayload: id }); }
+          };
+        }
+
+        var routing = createRoutingSource();
 
         /**
          * 内联开关：<button role="switch"> + aria-checked，外观全部来自注入的样式表
@@ -322,6 +422,103 @@
          * 输入框上方状态条：内核状态 + 命中域/载荷计数 + 注入总开关。
          * 开关关闭时状态条变灰并显示「已关闭」，提示注入已停用。
          */
+        /* ── 设置页「无限四代」tab ────────────────────────────────────────────────
+           挂 settings.plugins.tab，id 必须是插件包名（宿主按包名把 tab 归到本插件那一行，
+           见 dsh-memguard 的同款写法）。内容 = 载荷路由：自动（按模型）/ 手动（指定一份）。
+           所有写操作都走 host 自有路由，且带超时兜底 —— host 侧 promise 实测可能永不
+           settle，会把按钮永久锁在 pending（这是已知坑，见 dsh-memguard/settings 注释）。 */
+        function ArmorSettings() {
+          var snap = react.useSyncExternalStore(routing.store.subscribe, routing.store.getSnapshot, routing.store.getSnapshot);
+          var busyPair = react.useState(false);
+          var busy = busyPair[0];
+          var setBusy = busyPair[1];
+          var ready = snap.status === "ready";
+          var payloads = Array.isArray(snap.payloads) ? snap.payloads : [];
+
+          react.useEffect(function () { routing.refresh(); }, []);
+
+          var run = function (promise) {
+            setBusy(true);
+            // 硬复位：无论 promise 是否 settle，5s 后一定解锁
+            window.setTimeout(function () { setBusy(false); }, 5000);
+            Promise.resolve(promise).then(
+              function () { setBusy(false); },
+              function () { setBusy(false); }
+            );
+          };
+
+          var option = function (target, current, label) {
+            return react.createElement(
+              "button",
+              {
+                key: target,
+                type: "button",
+                className: "dsh-armor-opt",
+                "data-active": current === target ? "true" : "false",
+                disabled: busy || !ready,
+                onClick: function () { run(routing.setMode(target)); }
+              },
+              label
+            );
+          };
+
+          return react.createElement(
+            "div",
+            { className: "dsh-armor-settings" },
+            react.createElement("div", { className: "dsh-armor-s-title" }, "注入载荷"),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-desc" },
+              "自动 = 按当前模型身份选载荷（GPT 系走 Codex 载荷，其余走无限四代自持载荷）；手动 = 固定使用指定的那一份。"
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-row" },
+              react.createElement("span", { className: "dsh-armor-s-label" }, "模式"),
+              react.createElement(
+                "div",
+                { className: "dsh-armor-seg" },
+                option("auto", snap.mode, "自动"),
+                option("manual", snap.mode, "手动")
+              )
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-row" },
+              react.createElement("span", { className: "dsh-armor-s-label" }, "载荷"),
+              react.createElement(
+                "div",
+                { className: "dsh-armor-list" },
+                payloads.length === 0
+                  ? react.createElement("span", { className: "dsh-armor-s-desc" }, ready ? "（未取到载荷清单）" : "加载中…")
+                  : payloads.map(function (item) {
+                      var id = item && item.id ? item.id : "";
+                      var active = snap.mode === "manual" && snap.manualPayload === id;
+                      return react.createElement(
+                        "button",
+                        {
+                          key: id,
+                          type: "button",
+                          className: "dsh-armor-opt",
+                          "data-active": active ? "true" : "false",
+                          disabled: busy || !ready || snap.mode !== "manual",
+                          onClick: function () { run(routing.setManualPayload(id)); }
+                        },
+                        (item && item.label ? item.label : id) + "  (" + id + ")"
+                      );
+                    })
+              )
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-note" },
+              snap.mode === "auto"
+                ? "自动模式：载荷随模型实时切换，无需手动干预。"
+                : "手动模式：所有模型都使用 " + snap.manualPayload + "（GPT 系载荷只注入单段）。"
+            )
+          );
+        }
+
         function ArmorDock(props) {
           var useProjection = props.useProjection;
           var armor = typeof useProjection === "function"
@@ -378,8 +575,18 @@
             }
           }
 
+          // tooltip 带上当前载荷路由，免得用户去设置页确认「现在到底走哪份」
+          var routingSnap = react.useSyncExternalStore(routing.store.subscribe, routing.store.getSnapshot, routing.store.getSnapshot);
+          var payloadLabel = "";
+          if (routingSnap.status === "ready") {
+            if (routingSnap.mode === "manual") {
+              payloadLabel = " · 载荷 " + routingSnap.manualPayload + "（手动）";
+            } else {
+              payloadLabel = " · 载荷 自动（按模型）";
+            }
+          }
           var badgeTitle = enabled
-            ? "无限四代 v" + VERSION + " — " + scopeLabel + "注入开启中"
+            ? "无限四代 v" + VERSION + " — " + scopeLabel + "注入开启中" + payloadLabel
             : "无限四代 — " + scopeLabel + "已关闭（系统提示词零残留）";
 
           return react.createElement(
@@ -409,15 +616,33 @@
               order: 30
             }, ArmorDock)
           );
+          // 设置 → 内置插件 →「无限四代」tab：载荷路由（自动 / 手动）。
+          // id 必须是插件包名 —— 宿主按包名把 tab 归到本插件那一行。
+          ctx.slots.inject("settings.plugins.tab", () =>
+            ctx.slots.register(
+              {
+                name: "settings.plugins.tab",
+                id: "dsh-infinite-gen-4",
+                order: 20,
+                label: function () { return "无限四代"; }
+              },
+              ArmorSettings
+            )
+          );
           // 0.2.x：宿主 settings 表单面（ctx.remote.settings，模块级 inject 已声明 → apply 时保证可用）。
           // 绑定失败只让开关退回只读（真值仍由 host 投影下发），不影响状态条渲染；
           // settings/document-updated 事件用于设置页改动时同步刷新。
           ctx.effect(function () {
             var unbind = setting.attach(ctx);
+            // 载荷路由也随设置变更刷新（设置页切 mode / 换载荷后状态条 tooltip 要跟上）
+            routing.refresh();
             var remote = ctx.remote;
             var off = remote !== void 0 && typeof remote.$on === "function"
               ? remote.$on("settings/document-updated", function (ns) {
-                  if (ns === void 0 || ns === SETTINGS_NAMESPACE) setting.refresh();
+                  if (ns === void 0 || ns === SETTINGS_NAMESPACE) {
+                    setting.refresh();
+                    routing.refresh();
+                  }
                 })
               : void 0;
             return function () {

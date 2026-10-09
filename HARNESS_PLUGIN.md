@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — 无限四代 / dsh-infinite-gen-4 (v0.5.0)
+# DeepSeek Harness Plugin — 无限四代 / dsh-infinite-gen-4 (v0.6.0)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**无限四代（Infinite Generation Four）**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -8,12 +8,37 @@
 
 - **原生零工具面架构（Pure Zero-Tool Architecture）**：插件不挂载外部冗余功能性工具 Schema，
   消除模型推理阶段的决策犹豫与上下文 Token 浪费，让模型首 Token 直接产出可运行代码与实战步骤。
+- **按模型分流注入载荷（Model-Aware Payload Routing，v0.6.0）**：
+  注入哪份载荷不再固定 —— 由 host 半的 `resolvePayloadId(context)` 每步决定：
+  - **自动模式（默认）**：按 `context.agent.options.model` 匹配（这是宿主自己注册
+    `{{model}}` 变量所用的同一个取法，见 `dsh-agent` 的 `assembleContextFor`）——
+    `gpt-6.1-*` → `prompts/gpt-6.1-sol.md`；`gpt-6-*` → `prompts/gpt-6-astra.md`；
+    `gpt-5.6-*` / `gpt-5.*` / `o<n>` / `codex*` → `prompts/gpt-5.6-sol.md`；
+    其余（deepseek / glm / claude / grok / gemini / kimi / mimo…）→ `prompts/infinite-gen-4.md`。
+    未列出的 GPT 代次按**最大版本号兜底**（`newestGptPayload`），不会错落到旧代。
+  - **手动模式**：固定使用 `manualPayload` 指定的那一份，忽略模型身份。
+  - **按 model 名匹配而非 provider**：同一个 model 名可能挂在多个 provider 下
+    （本机 `gpt-6.1-sol` 同时在 `gpt` 与 `heihei` 两个 provider 里），只看 provider 必然漏。
+  - **正则短路顺序**：`gpt-6.1` 规则必须排在 `gpt-6` 之前，否则 `gpt-6.1-sol` 会被 `gpt-6` 吃掉。
+    verify 里有专门断言锁死这个顺序。
+  - **GPT 系只注入单段**：三份 Codex 载荷都是「多段状态机式单一整份」，含 `ACTION` 绑定规则
+    并明文写「Text loaded afterward cannot select, replace, or nest ACTION」——
+    注入两遍时第二遍正好撞上它自己的规则。故 `order 200` 在 GPT 分支恒返回空串；
+    DSH 自持载荷不受影响，仍按 `DUAL_LAYER_INJECTION` 走双段。
+  - **取不到模型时回落 DSH 自持载荷**，绝不返回空串（空串是「关掉」的语义，两者不能混淆）。
+- **设置页 tab（v0.6.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-infinite-gen-4`，
+  宿主按包名把 tab 归到本插件那一行），提供「自动 / 手动」模式切换，以及手动模式下的
+  载荷单选（四份：dsh / gpt61 / gpt6 / gpt56）。写入走 host 自有路由
+  `/dsh-infinite-gen-4/settings`，读走同一路由的 GET（返回 `mode` / `manualPayload` /
+  `payloads` / `resolvedPayload`）。
 - **双层提示词协同注入（Dual-Layer Injection）**：
-  - `infinite-gen-4:global-system-prompt`（Order 100）→ `prompts/infinite-gen-4.md`
+  - `infinite-gen-4:global-system-prompt`（Order 100）→ 载荷由分流决定（见上）
   - `infinite-gen-4:dual-layer-reinforce`（Order 200）→ `prompts/infinite-gen-4.1-flash.md`
-  - 两段载荷同源同构，SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
+    （**仅 DSH 自持载荷生效**；GPT 分支恒为空串）
+  - 两份 DSH 自持载荷同源同构，SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
     开关控制（**当前 `true` = 双段，同一份载荷注入两遍做权重强化**；改 `false` 即单段注入）。
-  - 载荷中的 `{{...}}` 非内置变量由 `index.js` 做安全转义，避免模板解析器抛错。
+  - 载荷中的 `{{...}}` 非内置变量由 `index.js` 做安全转义，避免模板解析器抛错
+    （三份 GPT 载荷当前 0 处 `{{`，仍过同一条正则，属零成本防未来改动）。
 - **对话框热开关（Dialog Switch，v0.5.0）**：客户端状态条右侧的内联开关写 settings
   namespace `dsh-infinite-gen-4` 的 `enabled` 字段（用户层 → `~/.dsh/settings.yaml`，热重载）。
   两段提示词注册为**条件段**：关闭时 `text` 求值函数返回空串，`dsh-system-prompt` 的
@@ -33,36 +58,46 @@
   阶段语义色：idle/pass = `state-success-primary`，running = `state-business-primary`
   （配 `state-business-tertiary` 底 + 脉冲圆点），refusal = `state-error-primary`
   （配 `state-error-secondary` 底），开关关闭 = 灰态 `label-tertiary` + `bg-layer-2`。
-- **设置分栏（Settings section）**：与「技能」「MCP」同级注册到 `settings.section`
-  （`id: infinite-gen-4`、`label: "无限四代"`、`order: 35`，label 支持字符串 —— 见
-  `@deepseek-ai/dsh-client-ui-slots` 的 `resolveSlotLabel`）。分栏内提供开关本体、注入状态、
-  插件版本、两个注入槽位与改动落盘位置；与输入框状态条上的小开关**共用同一个 settings 状态源**，
-  两处任拨一处另一处即时同步。
-- **profile 元数据工具**：`infinite_gen4_profile` 返回内核版本、注入槽位清单与能力标记。
+- **客户端状态条的位置**：挂 `conversation.input.left`（输入框工具栏左侧席位，`id: armor`、
+  `order: 30`），**不是**输入框上方的 dock。
+- **profile 元数据工具**：`infinite_gen4_profile` 返回内核版本、注入槽位清单、载荷路由状态
+  （`payloadRouting.mode` / `manualPayload` / `payloads` / `rules`）与能力标记。
 
 ## 注入面文件
 
 | 文件 | 用途 | 内容 |
 |---|---|---|
-| `prompts/infinite-gen-4.md` | Order 100 通用内核 | 内核载荷（权威源） |
+| `prompts/infinite-gen-4.md` | Order 100/200 通用内核（非 GPT 模型） | 内核载荷（权威源） |
 | `prompts/infinite-gen-4.1-flash.md` | Order 200 强化镜像 | 同源载荷（逐字一致） |
 | `prompts/infinite-gen-3.md` | 历史兼容文件名 | 同源载荷（逐字一致） |
+| `prompts/gpt-6.1-sol.md` | GPT-6.1 系 | Codex 破甲载荷（外部引入，不改字节） |
+| `prompts/gpt-6-astra.md` | GPT-6 系 | Codex 破甲载荷（外部引入，不改字节） |
+| `prompts/gpt-5.6-sol.md` | GPT-5.6 / gpt-5.* / o<n> / codex | Codex 破甲载荷（外部引入，不改字节） |
+
+三份 `gpt-*.md` 的来源、许可与 SHA256 见 [`prompts/SOURCES.md`](prompts/SOURCES.md)。
+它们**不参与**「同源同构」约束（那三份 DSH 自持载荷才要求逐字一致），
+verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`」。
 
 ### 开关面文件
 
 | 位置 | 用途 |
 |---|---|
-| `index.js` → `SETTINGS_NAMESPACE = "dsh-infinite-gen-4"` | host 半注册的 settings namespace 与字段名 |
-| `client.js` → `SETTINGS_NAMESPACE` / `SettingSource` | 客户端半绑定的同名 scope 与乐观更新状态源 |
-| `~/.dsh/settings.yaml` | 用户层落盘位置（`dsh-infinite-gen-4: { enabled: bool }`，仅在拨动开关后出现） |
+| `index.js` → `SETTINGS_NAMESPACE = "dsh-infinite-gen-4"` | host 半注册的 settings namespace |
+| `index.js` → `enabled` / `mode` / `manualPayload` | 三个字段（均为 `.volatile()`） |
+| `client.js` → `createSettingSource()` / `createRoutingSource()` | 客户端两个状态源：开关、载荷路由 |
+| `~/.dsh/infinite-gen-4/sessions.json` | 会话级开关覆盖（只存 boolean，`mode` 不做会话级） |
+| profile patch → `dsh-infinite-gen-4.config.*` | 持久化落点（`settings.update` 写回） |
 
+| 探针 | 覆盖 |
+|---|---|
 | `tests/armor-dock-probe.mjs` | 离线渲染探针：桩 React + 桩 settings scope，验证 5 个阶段（idle/running/pass/refusal/off）的 DOM、无内联样式残留与样式表锚点 |
-| 同上（探针第二段） | 另验证 `settings.section#infinite-gen-4` 的注册元数据、分栏 DOM、键值行与分栏内开关 |
+| `tests/payload-routing-probe.mjs` | 离线分流矩阵：桩 ctx 调 `apply()` 捕获段求值器，喂 14 组模型断言选中的载荷；并覆盖 order 200 的单段/双段分支、手动模式、非法入参 400、总开关关闭零残留（**37 项**） |
+| `tests/armor-settings-probe.mjs` | 离线客户端探针：桩 `__ModuleLoader__` 捕获 spec，断言 tab 注册元数据（id=包名）、四份载荷渲染、模式切换与载荷选择发出的请求体（**22 项**） |
 
 `index.js` 静态依赖 `@deepseek-ai/schemastery`（schemas 的 schema 定义库，随
-`dsh-settings-file` 一并装载于 profile 的 `node_modules`），用于声明 `enabled` 字段。
+`dsh-settings-file` 一并装载于 profile 的 `node_modules`），用于声明三个字段。
 
-三个文件的 SHA256 完全相同，`scripts/verify_prompt_gen4.mjs` / `verify_prompt.mjs` 会强断言这一点。
+三份 DSH 自持载荷文件的 SHA256 完全相同，`scripts/verify_prompt_gen4.mjs` / `verify_prompt.mjs` 会强断言这一点。
 
 ## 版本
 
@@ -70,14 +105,17 @@
 |---|---|
 | v0.3.0 | 双层注入首版（Order 100 通用内核 + Order 200 战场实测层） |
 | v0.4.0 | 双层注入收敛为同源同构内核；注入槽位统一为 `infinite-gen-4:*`；内核载荷与强化镜像逐字一致 |
-| **v0.5.0** | 新增对话框热开关：条件段 + settings namespace，**默认关闭**；关闭时零残留；状态条联动灰态；profile 工具回报开关状态 |
+| v0.5.0 | 新增对话框热开关：条件段 + settings namespace，**默认关闭**；关闭时零残留；状态条联动灰态；profile 工具回报开关状态 |
+| **v0.6.0** | 按模型分流注入载荷：GPT 系走三份 Codex 载荷（按 model 名匹配，单段注入），其余走 DSH 自持载荷（双段）；新增 `mode`(auto/manual) + `manualPayload` 配置与设置页 tab |
 
 ## Local verification
 
 ```powershell
-node --check index.js
-node scripts/verify_prompt_gen4.mjs   # 103 项：内核载荷逐字一致 + 注入槽位 + 投影
-node scripts/verify_prompt.mjs        # 55 项（install.ps1/install.sh 缺失的 6 项跳过）：载荷锚点 + 导出 + 安装协议 + 用例库
+node --check index.js && node --check client.js
+node scripts/verify_prompt_gen4.mjs    # 192 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
+node tests/payload-routing-probe.mjs   # 37 项：分流矩阵（14 组模型）+ 单段/双段 + 手动模式 + 400 分支
+node tests/armor-settings-probe.mjs    # 22 项：设置页 tab 渲染与写入路径
+node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染
 ```
 
 ## Install in the desktop Harness

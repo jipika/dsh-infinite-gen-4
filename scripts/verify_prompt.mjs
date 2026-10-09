@@ -1,4 +1,4 @@
-// 无限四代 v0.5.0 兼容回归校验（零工具面纯净版）
+// 无限四代 兼容回归校验（零工具面纯净版）—— 三代遗留断言，见文末说明
 // 本脚本聚焦：双层内核载荷锚点 / 注入面同源覆盖 / index.js 导出 / 一键安装协议 / 用例库结构。
 // 权威断言（品牌纯净度 + 同源逐字比对）由 verify_prompt_gen4.mjs 执行；本脚本可独立运行。
 // 用法：node scripts/verify_prompt.mjs [--json]
@@ -115,7 +115,7 @@ mustContain(indexSrc, '"./prompts/infinite-gen-4.1-flash.md"', "index.js 载入 
 mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "注入槽位 Order 100");
 mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "注入槽位 Order 200");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "双段注入开关");
-mustContain(indexSrc, 'pluginVersion: "0.5.0"', "内核版本 0.5.0");
+mustContain(indexSrc, 'pluginVersion: "0.6.0"', "内核版本 0.6.0");
 mustContain(indexSrc, "stateVersion: 3", "投影 stateVersion 3");
 // 评分器单源修订（2026-10-08 按上游 PR#21）：规则表位于 scripts/lib/scorer.mjs，
 // index.js 只做委托调用，不再维护第二份副本。

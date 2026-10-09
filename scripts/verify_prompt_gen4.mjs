@@ -167,10 +167,69 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.5.0"', "内核版本 0.5.0");
+mustContain(indexSrc, 'pluginVersion: "0.6.0"', "内核版本 0.6.0");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 4", "投影版本 stateVersion 4（state 增加 sessionId）");
+
+// ---- 4b. 按模型分流注入载荷（GPT 系走 Codex 载荷） ----
+// 三份外部载荷：原样引入、互不同源，不参与 INJECTED_PROMPT_FILES 的逐字同源约束
+const GPT_PAYLOAD_FILES = [
+  ["prompts/gpt-6.1-sol.md", "37382fb7082652e5b18c99fa5086fbc6d414993eaeae2ec7852ba372b031acac"],
+  ["prompts/gpt-6-astra.md", "d6976b90b399b9e11df9430dd3663072288f1d858a4910b1e9d5109b3ae7e660"],
+  ["prompts/gpt-5.6-sol.md", "c71c50e2f7a303b5eebc2b24c0b1ca0d9c753e3240db05c3e472c679907898f7"],
+];
+for (const [rel, want] of GPT_PAYLOAD_FILES) {
+  const abs = join(ROOT, rel);
+  check(existsSync(abs), `GPT 载荷文件存在 ${rel}`);
+  if (existsSync(abs)) {
+    const raw = readFileSync(abs, "utf8");
+    const got = createHash("sha256").update(readFileSync(abs)).digest("hex");
+    check(got === want, `GPT 载荷逐字未被改动 ${rel}`, got === want ? "" : `${got} != ${want}`);
+    // 引擎安全：`{{` 会被 renderPrompt 当变量引用（非内置变量已转义，载荷应保持 0 处）
+    check((raw.match(/\{\{/g) ?? []).length === 0, `GPT 载荷无 {{ 混淆风险 ${rel}`);
+  }
+}
+mustContain(indexSrc, "gpt-6.1-sol.md", "index.js 引用 6.1 Sol 载荷");
+mustContain(indexSrc, "gpt-6-astra.md", "index.js 引用 Astra 载荷");
+mustContain(indexSrc, "gpt-5.6-sol.md", "index.js 引用 5.6 Sol 载荷");
+mustContain(indexSrc, "matchPayloadId", "载荷分流: 匹配函数存在");
+mustContain(indexSrc, "resolvePayloadId", "载荷分流: 解析入口存在");
+mustContain(indexSrc, "modelOf", "载荷分流: 取当前模型 id");
+mustContain(indexSrc, "options?.model", "载荷分流: 按 agent.options.model 判定（官方取法）");
+mustContain(indexSrc, "isGptFamily", "载荷分流: GPT 系判定");
+mustContain(indexSrc, "newestGptPayload", "载荷分流: 未知代次按最大版本兜底");
+mustContain(indexSrc, "PAYLOAD_RULES", "载荷分流: 规则表存在");
+check(indexSrc.includes("const DUAL_LAYER_INJECTION = true"), "双段开关仍为 true（DSH 自持载荷双段）");
+mustContain(indexSrc, "gatedReinforce", "载荷分流: order 200 分支求值器（GPT 单段）");
+// 正则优先级：gpt-6.1 必须排在 gpt-6 之前，否则 6.1 被 6 吃掉
+{
+  const rulesIdx = indexSrc.indexOf("const PAYLOAD_RULES");
+  const seg = rulesIdx >= 0 ? indexSrc.slice(rulesIdx, rulesIdx + 400) : "";
+  const pos61 = seg.indexOf("gpt-6\\.1");
+  const pos6 = seg.indexOf("gpt-6(?!");
+  check(pos61 >= 0 && pos6 >= 0 && pos61 < pos6,
+    "载荷分流: gpt-6.1 规则先于 gpt-6（短路顺序）", `pos61=${pos61} pos6=${pos6}`);
+}
+// 配置项：mode(自动/手动) + manualPayload，与 enabled 同为 volatile
+mustContain(indexSrc, "MANUAL_PAYLOAD_FIELD", "配置: manualPayload 字段常量");
+mustContain(indexSrc, "MODE_FIELD", "配置: mode 字段常量");
+mustContain(indexSrc, '"auto"', "配置: auto 模式取值");
+mustContain(indexSrc, '"manual"', "配置: manual 模式取值");
+mustContain(indexSrc, "readState", "配置: 多字段状态解析（三层优先级链）");
+mustContain(indexSrc, "resolveField", "配置: 逐字段优先级解析");
+// POST 校验放宽为「至少一个合法字段」——并且非法值仍拒绝
+mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload }",
+  "配置: POST 放宽为至少一个合法字段");
+mustContain(indexSrc, "expected { mode:", "配置: 非法 mode 仍 400");
+mustContain(indexSrc, "expected { manualPayload:", "配置: 非法 manualPayload 仍 400");
+mustContain(indexSrc, 'typeof body.enabled !== "boolean"', "配置: enabled 类型校验保留");
+// 取不到模型时必须回落 DSH 载荷，绝不返回空串（空串是「关掉」的语义）
+mustContain(indexSrc, 'return "dsh";', "载荷分流: 未知模型回落 dsh");
+mustContain(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT", "载荷分流: 文本缺失回落 DSH 自持");
+// 离线探针钩子
+mustContain(indexSrc, "__testMatchPayloadId", "探针钩子: 导出 matchPayloadId");
+mustContain(indexSrc, "__testGatedReinforce", "探针钩子: 导出 order 200 求值器");
 
 // 纯净零工具面架构断言：确保原生无外部功能性工具与外部资产依赖
 check(!indexSrc.includes("encodeTool"), "纯净架构: 无外部工具 encodeTool");
@@ -189,9 +248,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-infinite-gen-4", "package.json name = dsh-infinite-gen-4");
-check(pkg.version === "0.5.0", "package.json version = 0.5.0");
+check(pkg.version === "0.6.0", "package.json version = 0.6.0");
 check(pkg.dsh?.id === "dsh-infinite-gen-4", "dsh.id = dsh-infinite-gen-4");
-check(pkg.dsh?.version === "0.5.0", "dsh.version = 0.5.0");
+check(pkg.dsh?.version === "0.6.0", "dsh.version = 0.6.0");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 6. 客户端状态条版本 ----
@@ -212,6 +271,16 @@ mustContain(clientSrc, "setGlobal", "客户端: ⌥ 点击切全局");
 mustContain(clientSrc, "altKey", "客户端: ⌥ 修饰键判定");
 mustContain(clientSrc, "/dsh-infinite-gen-4/session?id=", "客户端: 会话维度读路由");
 mustAbsent(clientSrc, "settingsScope", "客户端: 旧 settingsScope 通道已移除");
+// 设置页 tab：载荷路由（自动 / 手动）—— id 必须是插件包名，宿主按包名归位
+mustContain(clientSrc, "settings.plugins.tab", "客户端: 挂设置页插件 tab");
+mustContain(clientSrc, '"dsh-infinite-gen-4"', "客户端: tab 归属用插件包名");
+mustContain(clientSrc, "ArmorSettings", "客户端: 设置页组件存在");
+mustContain(clientSrc, "createRoutingSource", "客户端: 载荷路由状态源");
+mustContain(clientSrc, "setMode", "客户端: 模式切换写入");
+mustContain(clientSrc, "setManualPayload", "客户端: 载荷选择写入");
+// 已知坑：host 侧 promise 可能永不 settle → 所有写操作必须带超时/硬复位
+mustContain(clientSrc, "withTimeout", "客户端: remote 调用带超时");
+mustContain(clientSrc, "setTimeout(function () { setBusy(false); }, 5000)", "客户端: 设置页按钮硬复位");
 
 // ---- 7. 评分器与用例库 ----
 try {

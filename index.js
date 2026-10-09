@@ -8,7 +8,7 @@ import Schema from "@deepseek-ai/schemastery";
 // 状态条因此低报风险词、误判命中域。2026-10-08 按上游 PR#21 单源化。
 import { scoreResponse } from "./scripts/lib/scorer.mjs";
 
-// ── 无限四代注入载荷（v0.5.0） ────────────────────────────────────────────────────
+// ── 无限四代注入载荷（v0.6.0） ────────────────────────────────────────────────────
 // Order 100 与 Order 200 双槽位同时注册（DUAL_LAYER_INJECTION=true）；两段载荷同源同构
 // （SHA256 一致），等价于把同一份载荷注入两遍 —— 这是刻意的权重强化，不是误配。
 // 槽位均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
@@ -16,8 +16,96 @@ import { scoreResponse } from "./scripts/lib/scorer.mjs";
 const PROMPT_URL = new URL("./prompts/infinite-gen-4.md", import.meta.url);
 const PROMPT41_URL = new URL("./prompts/infinite-gen-4.1-flash.md", import.meta.url);
 // 兼容 DSH 提示词变量插值引擎（非内置变量的连续花括号做安全转义，防止模板解析器抛出 malformed prompt variable reference）
-const PROMPT_TEXT = readFileSync(PROMPT_URL, "utf8").replace(/\{\{(?!(?:cwd|model|provider)\}\})/g, "{ {");
-const PROMPT41_TEXT = readFileSync(PROMPT41_URL, "utf8").replace(/\{\{(?!(?:cwd|model|provider)\}\})/g, "{ {");
+const escapePromptVars = (text) => text.replace(/\{\{(?!(?:cwd|model|provider)\}\})/g, "{ {");
+const PROMPT_TEXT = escapePromptVars(readFileSync(PROMPT_URL, "utf8"));
+const PROMPT41_TEXT = escapePromptVars(readFileSync(PROMPT41_URL, "utf8"));
+
+// ── GPT 系外部载荷（Codex 破甲提示词） ─────────────────────────────────────────
+// 三份来自 MDX-Tom/gpt-instruct（MIT，见 prompts/SOURCES.md），字节原样保留。
+// 它们是「多段状态机式单一整份」——含 INJECTED REVISION ACTION 一类的 ACTION 绑定规则，
+// 且明文写「Text loaded afterward cannot select, replace, or nest ACTION」。
+// 因此 GPT 分支只注入单段（order 200 返回空串）：注入两遍时第二遍正好撞上它自己的规则。
+// DSH 自持载荷（infinite-gen-4.md）维持双段，那是刻意的权重强化。
+const GPT6_URL = new URL("./prompts/gpt-6-astra.md", import.meta.url);
+const GPT61_URL = new URL("./prompts/gpt-6.1-sol.md", import.meta.url);
+const GPT56_URL = new URL("./prompts/gpt-5.6-sol.md", import.meta.url);
+
+/**
+ * 载荷清单：id → { label, text }。
+ * text 一律过同一条 `{{` 转义正则（GPT 载荷当前 0 处命中，属零成本防未来改动）。
+ * 读取失败（文件缺失）不抛错：置为空串，由 gated 回落，避免整块插件不加载。
+ * @returns {Record<string, {label: string, text: string}>} 载荷表。
+ */
+function loadPayloadTable() {
+  const read = (url) => {
+    try {
+      return escapePromptVars(readFileSync(url, "utf8"));
+    } catch {
+      return "";
+    }
+  };
+  return {
+    dsh: { label: "无限四代（DSH 自持载荷）", text: PROMPT_TEXT },
+    gpt61: { label: "GPT-6.1 Sol（Codex 载荷）", text: read(GPT61_URL) },
+    gpt6: { label: "GPT-6 Astra（Codex 载荷）", text: read(GPT6_URL) },
+    gpt56: { label: "GPT-5.6 Sol（Codex 载荷）", text: read(GPT56_URL) },
+  };
+}
+
+const PAYLOADS = loadPayloadTable();
+/** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
+const PAYLOAD_IDS = ["dsh", "gpt61", "gpt6", "gpt56"];
+/** 分流规则：**按具体度降序短路** —— gpt-6.1 必须排在 gpt-6 之前，否则 6.1 会被 6 吃掉。 */
+const PAYLOAD_RULES = [
+  [/^gpt-6\.1(?!\d)/i, "gpt61"],
+  [/^gpt-6(?!\.)/i, "gpt6"],
+  [/^gpt-5\.6(?!\d)/i, "gpt56"],
+  [/^gpt-5(?!\.)/i, "gpt56"],
+  [/^o[0-9]/i, "gpt56"],
+  [/^codex/i, "gpt56"],
+];
+
+/**
+ * 判断一个 model id 是否属于 GPT（OpenAI）系 —— 用于「其他 gpt-* 走最近代」的兜底。
+ * @param {string} model 模型 id。
+ * @returns {boolean} 是否 GPT 系。
+ */
+function isGptFamily(model) {
+  return /^(gpt|o[0-9]|codex)/i.test(String(model ?? ""));
+}
+
+/**
+ * 未知代次的 GPT 模型兜底：抽 `gpt-<n>[.<n>]` 取**最大版本号**，落在最近代载荷。
+ * 例：未来出现 `gpt-7-x` → 走 gpt61（当前最新代），而不是错落到 5.6。
+ * @param {string} model 模型 id。
+ * @returns {string} 载荷 id。
+ */
+function newestGptPayload(model) {
+  const m = /^gpt-(\d+(?:\.\d+)?)/i.exec(String(model ?? ""));
+  if (m === null) return "gpt56";
+  const version = Number.parseFloat(m[1]);
+  if (!Number.isFinite(version)) return "gpt56";
+  if (version > 6) return "gpt61";
+  if (version > 5.6) return "gpt6";
+  return "gpt56";
+}
+
+/**
+ * 按模型身份选载荷 id —— **按 model 名匹配，不按 provider**。
+ * 理由（本机实测）：`gpt-6.1-sol` 同时挂在 `gpt` 与 `heihei` 两个 provider 下，
+ * 只看 provider 必然漏掉后者。
+ * @param {string|undefined} model 当前模型 id（agent.options.model）。
+ * @returns {string} 载荷 id（未知一律回落 "dsh"）。
+ */
+function matchPayloadId(model) {
+  const id = String(model ?? "");
+  if (id.length === 0) return "dsh";
+  for (const [pattern, payloadId] of PAYLOAD_RULES) {
+    if (pattern.test(id)) return payloadId;
+  }
+  // GPT 系但代次未列在上表：取最大版本号落到最近代；非 GPT 系一律 DSH 自持载荷
+  return isGptFamily(id) ? newestGptPayload(id) : "dsh";
+}
 
 // 双段注入镜像开关：
 //   true  = 沿用四代双层架构，Order 100 与 Order 200 各注入一份同源载荷（重复注入）
@@ -25,18 +113,23 @@ const PROMPT41_TEXT = readFileSync(PROMPT41_URL, "utf8").replace(/\{\{(?!(?:cwd|
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.5.0";
+const VERSION = "0.6.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.5.0"
+//   pluginVersion: "0.6.0"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-infinite-gen-4.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
 const SETTINGS_NAMESPACE = "dsh-infinite-gen-4";
 const SETTINGS_FIELD = "enabled";
+const MODE_FIELD = "mode";
+const MANUAL_PAYLOAD_FIELD = "manualPayload";
 // 默认关闭：没写 config 时注入为空（零残留），需要时由对话框开关或手写
 // `config: { enabled: true }` 打开。默认值只存在于代码与部署组合层，
 // 用户开关是唯一的持久化写入方，因此「关掉」永远不会被写进设置文档。
 const DEFAULT_ENABLED = false;
+// 载荷路由默认值：auto = 按当前模型身份自动选；manual = 固定用手动指定的那一份。
+const DEFAULT_MODE = "auto";
+const DEFAULT_MANUAL_PAYLOAD = "dsh";
 // 同一字段需要两个独立 schema 实例：.volatile() 是就地改写 meta（extra），
 // 复用同一实例会把旧 register 通道也变成 volatile。
 //   SettingsSchema —— 0.1.x 的 settings.register(namespace, schema) 通道
@@ -44,11 +137,25 @@ const DEFAULT_ENABLED = false;
 //                     写入经 fiber.config 生效（热更新不重挂 entry）
 const enabledField = () =>
   Schema.boolean().default(DEFAULT_ENABLED).description("无限四代提示词注入总开关（默认关）");
-const SettingsSchema = Schema.object({ enabled: enabledField() }).description(
-  "无限四代 / dsh-infinite-gen-4 运行时开关",
-);
+const modeField = () =>
+  Schema.union(["auto", "manual"])
+    .default(DEFAULT_MODE)
+    .description("载荷路由模式：auto = 按当前模型自动选，manual = 固定用手动指定的载荷");
+const manualPayloadField = () =>
+  Schema.union(PAYLOAD_IDS)
+    .default(DEFAULT_MANUAL_PAYLOAD)
+    .description("手动模式下固定使用的载荷（mode=manual 时生效）");
+const SettingsSchema = Schema.object({
+  enabled: enabledField(),
+  mode: modeField(),
+  manualPayload: manualPayloadField(),
+}).description("无限四代 / dsh-infinite-gen-4 运行时开关");
 /** 0.2.x settings 表单面 schema：entry id = 插件 id，字段必须 volatile 才能在线编辑。 */
-export const Config = Schema.object({ enabled: enabledField().volatile() });
+export const Config = Schema.object({
+  enabled: enabledField().volatile(),
+  mode: modeField().volatile(),
+  manualPayload: manualPayloadField().volatile(),
+});
 
 // ── 会话级开关覆盖 ──────────────────────────────────────────────────────────────
 // 全局默认 = profile entry config 的 enabled（新会话继承它）；单个会话可在状态条开关上
@@ -124,7 +231,8 @@ let entryConfig;
 // settings 服务句柄：自有写通道优先经它持久化（写盘落点 = profile patch）
 let settingsService;
 // 兜底覆盖：settings 表单面写不动时（entry 无 volatile 字段 / 服务缺席）让开关仍能立即生效；
-// 只存内存，进程重启后回到 config 真值。
+// 只存内存，进程重启后回到 config 真值。按字段存（enabled / mode / manualPayload）。
+/** @type {Record<string, unknown>|undefined} */
 let runtimeOverride;
 
 /**
@@ -161,18 +269,58 @@ function liveEntryConfig() {
  *        > 进程内后备值。
  * @returns {boolean} 是否注入内核载荷。
  */
-function isEnabled() {
-  if (settingsScope !== undefined) {
-    const resolved = settingsScope.get();
-    if (resolved?.enabled !== undefined) return resolved.enabled === true;
-  }
-  if (runtimeOverride !== undefined) return runtimeOverride;
+/**
+ * 读一个字段的三层优先级真值：settings 服务 > 兜底覆盖 > entry config。
+ * @param {Record<string, unknown>|undefined} resolved settings 服务解析值。
+ * @param {Record<string, unknown>|undefined} override 兜底覆盖对象。
+ * @param {string} field 字段名。
+ * @returns {unknown} 字段真值，全链路缺席时 undefined。
+ */
+function resolveField(resolved, override, field) {
+  const fromScope = resolved?.[field];
+  if (fromScope !== undefined) return fromScope;
+  const fromOverride = override?.[field];
+  if (fromOverride !== undefined) return fromOverride;
   const live = liveEntryConfig();
   if (live !== undefined) {
-    const value = unwrapConfigValue(live[SETTINGS_FIELD]);
-    if (value !== undefined) return value === true;
+    const value = unwrapConfigValue(live[field]);
+    if (value !== undefined) return value;
   }
-  return fallbackEnabled;
+  return undefined;
+}
+
+/**
+ * 当前开关状态（总开关 + 载荷路由）。
+ * 优先级：settings 服务（0.1.x register 通道）> 兜底覆盖（自有路由写入）> entry config
+ *        > 进程内后备值。三个字段共用同一条优先级链，逐字段解析。
+ * @returns {{enabled: boolean, mode: "auto"|"manual", manualPayload: string}} 状态。
+ */
+function readState() {
+  let resolved;
+  if (settingsScope !== undefined) {
+    try {
+      resolved = settingsScope.get();
+    } catch {
+      resolved = undefined;
+    }
+  }
+  const enabledRaw = resolveField(resolved, runtimeOverride, SETTINGS_FIELD);
+  const modeRaw = resolveField(resolved, runtimeOverride, MODE_FIELD);
+  const payloadRaw = resolveField(resolved, runtimeOverride, MANUAL_PAYLOAD_FIELD);
+  return {
+    enabled: enabledRaw === undefined ? fallbackEnabled : enabledRaw === true,
+    mode: modeRaw === "manual" ? "manual" : DEFAULT_MODE,
+    // 非法载荷 id 一律回落 dsh（绝不因手滑配置项让注入变成空）
+    manualPayload: PAYLOAD_IDS.includes(payloadRaw) ? payloadRaw : DEFAULT_MANUAL_PAYLOAD,
+  };
+}
+
+/**
+ * 当前注入是否启用。
+ * @returns {boolean} 是否注入载荷。
+ */
+function isEnabled() {
+  return readState().enabled;
 }
 
 /** 自有写通道的令牌头：跨站简单请求带不上自定义头，省掉一整类 CSRF。 */
@@ -241,9 +389,14 @@ async function handleSettingsRoute(req, res) {
 
   if (req.method === "GET") {
     if (!isSession) {
+      const state = readState();
       return sendJson(res, 200, {
         ok: true,
-        enabled: isEnabled(),
+        enabled: state.enabled,
+        mode: state.mode,
+        manualPayload: state.manualPayload,
+        resolvedPayload: state.mode === "manual" ? state.manualPayload : "(auto)",
+        payloads: PAYLOAD_IDS.map((pid) => ({ id: pid, label: PAYLOADS[pid]?.label ?? pid })),
         source: runtimeOverride !== undefined ? "override" : "config",
       });
     }
@@ -266,6 +419,7 @@ async function handleSettingsRoute(req, res) {
     return sendJson(res, 400, { ok: false, error: "expected a JSON object body" });
   }
 
+  // /session 路由保持 boolean-only 语义（载荷路由按用户选择只做全局，不按会话覆盖）
   if (isSession) {
     const id = typeof body.sessionId === "string" ? body.sessionId : "";
     if (id.length === 0) return sendJson(res, 400, { ok: false, error: "expected { sessionId: string }" });
@@ -286,34 +440,133 @@ async function handleSettingsRoute(req, res) {
     });
   }
 
-  if (typeof body.enabled !== "boolean") {
-    return sendJson(res, 400, { ok: false, error: "expected { enabled: boolean }" });
+  // 收集本次要写的字段：至少一个合法字段，否则 400。
+  // 三个字段都可独立写（客户端可只切 mode，不必重复提交 enabled）。
+  const patch = {};
+  if (body.enabled !== undefined) {
+    if (typeof body.enabled !== "boolean") {
+      return sendJson(res, 400, { ok: false, error: "expected { enabled: boolean }" });
+    }
+    patch[SETTINGS_FIELD] = body.enabled;
   }
-  const target = body.enabled;
+  if (body.mode !== undefined) {
+    if (body.mode !== "auto" && body.mode !== "manual") {
+      return sendJson(res, 400, { ok: false, error: 'expected { mode: "auto" | "manual" }' });
+    }
+    patch[MODE_FIELD] = body.mode;
+  }
+  if (body.manualPayload !== undefined) {
+    if (!PAYLOAD_IDS.includes(body.manualPayload)) {
+      return sendJson(res, 400, {
+        ok: false,
+        error: `expected { manualPayload: ${PAYLOAD_IDS.join(" | ")} }`,
+      });
+    }
+    patch[MANUAL_PAYLOAD_FIELD] = body.manualPayload;
+  }
+  if (Object.keys(patch).length === 0) {
+    return sendJson(res, 400, {
+      ok: false,
+      error: "expected at least one of { enabled, mode, manualPayload }",
+    });
+  }
+
   let persisted = false;
   const service = settingsService;
   if (service !== undefined && typeof service.update === "function") {
     try {
-      await service.update(SETTINGS_NAMESPACE, { [SETTINGS_FIELD]: target });
-      // 写完自校验：真值确实翻转才算持久化成功，否则退回内存覆盖
-      persisted = isEnabled() === target;
+      await service.update(SETTINGS_NAMESPACE, patch);
+      // 写完自校验：真值确实落地才算持久化成功，否则退回内存覆盖
+      const after = readState();
+      persisted = Object.entries(patch).every(([key, value]) => after[key] === value);
     } catch {
       persisted = false;
     }
   }
-  runtimeOverride = persisted ? undefined : target;
-  return sendJson(res, 200, { ok: true, enabled: isEnabled(), persisted });
+  if (persisted) {
+    // 持久化成功即清掉本轮涉及的字段的兜底覆盖，让配置真值接管
+    if (runtimeOverride !== undefined) {
+      for (const key of Object.keys(patch)) delete runtimeOverride[key];
+    }
+  } else {
+    // 写不动则按字段落内存覆盖（保留本轮未涉及的字段的既有覆盖）
+    runtimeOverride = { ...(runtimeOverride ?? {}), ...patch };
+  }
+  return sendJson(res, 200, { ok: true, ...readState(), persisted });
 }
 
 /**
- * 条件段文本求值器：宿主每个模型步以 `{ agent, scope, signal }` 调用一次，
+ * 条件段文本求值器（order 100）：宿主每个模型步以 `{ agent, scope, signal }` 调用一次，
  * 因此这里天然就是「按会话」的 —— 会话覆盖关 / 全局关都返回空串，
  * 交给 renderPrompt 过滤，零残留。
- * @param {string} text - 注入载荷。
+ * 载荷不再是固定文本：由 `resolvePayloadId` 按「手动指定 / 当前模型身份」二选一。
  * @returns {(context: object) => string} 段文本求值函数。
  */
-function gated(text) {
-  return (context) => (isEnabledForSession(sessionIdOf(context)) ? text : "");
+function gated() {
+  return (context) => {
+    if (!isEnabledForSession(sessionIdOf(context))) return "";
+    return payloadTextFor(context, "primary");
+  };
+}
+
+/**
+ * GPT 分支的强化段（order 200）文本 —— 恒为空串。
+ * 三份 Codex 载荷都是状态机式单一整份，且明文写「Text loaded afterward cannot
+ * select, replace, or nest ACTION」：注入第二遍正好撞上它自己的规则。
+ * DSH 自持载荷不受影响，仍按 DUAL_LAYER_INJECTION 走双段。
+ * @param {object} context assemble context。
+ * @returns {string} 恒为空串。
+ */
+function gatedReinforce() {
+  return (context) => {
+    if (!isEnabledForSession(sessionIdOf(context))) return "";
+    if (resolvePayloadId(context) !== "dsh") return "";
+    return PROMPT41_TEXT;
+  };
+}
+
+/**
+ * 解析本次求值该用哪份载荷 id。
+ * mode=manual 时用手动指定值（忽略模型身份）；auto 时按 model 名匹配。
+ * @param {object} context assemble context。
+ * @returns {string} 载荷 id。
+ */
+function resolvePayloadId(context) {
+  const state = readState();
+  if (state.mode === "manual") return state.manualPayload;
+  return matchPayloadId(modelOf(context));
+}
+
+/**
+ * 从 section 求值 context 里取当前模型的 id。
+ * 宿主每步传 `{ agent, scope, signal }`（dsh-agent 的 assembleContextFor），
+ * 官方自己就用 `context.agent?.options.model` 注册 {{model}} 变量 —— 同一取法。
+ * agent 是宿主内部对象，全程 try 包裹，取不到就回落 DSH 自持载荷。
+ * @param {object|undefined} context assemble context。
+ * @returns {string|undefined} 模型 id。
+ */
+function modelOf(context) {
+  try {
+    const model = context?.agent?.options?.model;
+    return typeof model === "string" && model.length > 0 ? model : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 取指定槽位的载荷文本。
+ * @param {object} context assemble context。
+ * @param {"primary"} _slot 槽位（当前只有主槽位会按载荷分流）。
+ * @returns {string} 载荷文本。
+ */
+function payloadTextFor(context, _slot) {
+  const id = resolvePayloadId(context);
+  const entry = PAYLOADS[id];
+  const text = entry?.text ?? "";
+  // 文件缺失等异常一律回落 DSH 自持载荷，绝不返回空串
+  // （空串是「关掉」的语义，不能与「取不到」混淆）
+  return text.length > 0 ? text : PROMPT_TEXT;
 }
 
 const objectOutput = {
@@ -330,6 +583,7 @@ const profileTool = {
   output: objectOutput,
   execute() {
     const enabled = isEnabled();
+    const state = readState();
     return {
       plugin: "dsh-infinite-gen-4",
       pluginVersion: VERSION,
@@ -342,15 +596,26 @@ const profileTool = {
       promptSource: [
         "prompts/infinite-gen-4.md",
         "prompts/infinite-gen-4.1-flash.md",
+        "prompts/gpt-6.1-sol.md",
+        "prompts/gpt-6-astra.md",
+        "prompts/gpt-5.6-sol.md",
       ],
-      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 双段注入载荷 + 对话框热开关`],
-      // 总开关状态：enabled=false 时两段载荷均渲染为空串，系统提示词零残留
+      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 按模型分流注入载荷 + 对话框热开关`],
+      // 总开关状态：enabled=false 时所有载荷均渲染为空串，系统提示词零残留
       enabled,
+      // 载荷路由：auto = 按当前模型身份选；manual = 固定用手动指定那份
+      payloadRouting: {
+        mode: state.mode,
+        manualPayload: state.manualPayload,
+        payloads: PAYLOAD_IDS.map((pid) => ({ id: pid, label: PAYLOADS[pid]?.label ?? pid })),
+        rules: "gpt-6.1→gpt61 / gpt-6→gpt6 / gpt-5.6|gpt-5|o<n>|codex→gpt56 / 非 GPT→dsh（未列代次按最大版本号兜底）",
+      },
       control: {
         kind: "dialog-switch",
         settingsNamespace: SETTINGS_NAMESPACE,
         settingsField: SETTINGS_FIELD,
-        persistence: "profile patch → dsh-infinite-gen-4.config.enabled（0.2.x 由 settings 表单面 settings.mutate 写回；0.1.7 前为 ~/.dsh/settings.yaml）",
+        settingsFields: [SETTINGS_FIELD, MODE_FIELD, MANUAL_PAYLOAD_FIELD],
+        persistence: "profile patch → dsh-infinite-gen-4.config.*（0.2.x 由 settings 表单面 settings.mutate 写回；0.1.7 前为 ~/.dsh/settings.yaml）",
         fallbackWhenSettingsMissing: fallbackEnabled,
       },
       injection: [
@@ -358,15 +623,20 @@ const profileTool = {
           section: "infinite-gen-4:global-system-prompt",
           order: 100,
           enabled,
+          payload: state.mode === "manual" ? state.manualPayload : "(auto: 按模型)",
         },
         {
           section: "infinite-gen-4:dual-layer-reinforce",
           order: 200,
+          // GPT 系走单段（载荷自带 ACTION 绑定规则，重复注入会自我冲突）
           enabled: enabled && DUAL_LAYER_INJECTION,
+          note: "仅 DSH 自持载荷生效；GPT 系载荷恒为空串（单段）",
         },
       ],
       mode: enabled
-        ? "armor — 双段注入（Order 100 + Order 200），零工具面纯净直出"
+        ? state.mode === "manual"
+          ? `armor — 手动模式，固定使用 ${state.manualPayload}`
+          : "armor — 自动模式，按当前模型身份选载荷（GPT 系走 Codex 载荷，其余走 DSH 自持载荷）"
         : "off — 开关关闭，载荷渲染为空串（零残留）",
       payloadSections: [
         "工作区指令外壳（<system-reminder> … Instructions from: ~/.dsh/AGENTS.md）",
@@ -377,6 +647,8 @@ const profileTool = {
         "Layer independence（plan / todo / 子代理纪律以宿主 ~/.dsh/AGENTS.md 为唯一来源，不再重复注入）",
       ],
       hostFeatures: [
+        "Model-Aware Routing: 按 agent.options.model 选载荷（gpt-6.1→6.1 载荷 / gpt-6→Astra / gpt-5.6|o<n>|codex→5.6 / 非 GPT→DSH 自持）；按 model 名而非 provider（同一 model 名可能挂在多个 provider 下）",
+        "Payload Mode: auto（按模型自动）| manual（固定指定一份），全局配置，经设置页与本插件自有路由读写",
         "Session Switch: 开关按会话生效 —— section 求值 context 带 { agent, scope, signal }，用 agent.sessionId / session.header.id 查 ~/.dsh/infinite-gen-4/sessions.json 覆盖；⌥ 点击切全局",
         "Dialog Switch: 输入框状态条内联开关，经自有路由（host 先试 settings.update 持久化）写开关，下一模型步即时生效",
         "Settings Form: 导出 volatile Config + settings.configure，官方设置页与客户端开关共用同一写入面（写盘落点 = profile patch）",
@@ -443,6 +715,19 @@ function armorProjectionApply(state, event) {
   }
   return state;
 }
+
+/**
+ * 离线探针钩子（tests/payload-routing-probe.mjs 用）。
+ * 导出内部决策函数，让探针能在不重启宿主的前提下断言分流矩阵。
+ * 不参与运行时逻辑，也不进任何注入面。
+ */
+export const __testPayloadIds = PAYLOAD_IDS;
+export const __testRoute = handleSettingsRoute;
+export const __testMatchPayloadId = matchPayloadId;
+export const __testResolvePayloadId = resolvePayloadId;
+export const __testReadState = readState;
+export const __testGated = gated;
+export const __testGatedReinforce = gatedReinforce;
 
 export const name = "dsh-infinite-gen-4";
 export const inject = ["tools", "systemPrompt"];
@@ -515,11 +800,12 @@ export function apply(ctx) {
   });
 
   // ── 1. 条件提示词段：开关关闭时渲染为空串（renderPrompt 过滤，零残留） ────────
+  // 载荷按「手动指定 / 当前模型身份」动态选择：GPT 系走 Codex 载荷，其余走 DSH 自持载荷。
   ctx.effect(() =>
     ctx.systemPrompt.section({
       name: "infinite-gen-4:global-system-prompt",
       order: 100,
-      text: gated(PROMPT_TEXT),
+      text: gated(),
     }),
   );
   if (DUAL_LAYER_INJECTION) {
@@ -527,7 +813,8 @@ export function apply(ctx) {
       ctx.systemPrompt.section({
         name: "infinite-gen-4:dual-layer-reinforce",
         order: 200,
-        text: gated(PROMPT41_TEXT),
+        // DSH 自持载荷双段（刻意权重强化）；GPT 系走单段（见 gatedReinforce 注释）
+        text: gatedReinforce(),
       }),
     );
   }

@@ -33,10 +33,27 @@ const bound = {
     return Promise.resolve();
   },
 };
+// 自有路由 mock：0.2.x 起这是开关与载荷路由的唯一读通道（settingsScope 已移除），
+// 不桩 fetch 的话状态条恒为「已关闭」，探针就测不到 running/pass/refusal 各阶段。
+let routeEnabled = true;
+let routeSnap = { ok: true, enabled: true, mode: 'auto', manualPayload: 'dsh', payloads: [] };
+globalThis.fetch = (url, init) => {
+  const method = init && init.method ? init.method : 'GET';
+  const body = init && init.body ? JSON.parse(init.body) : undefined;
+  if (method === 'POST' && body && typeof body.enabled === 'boolean') {
+    routeEnabled = body.enabled;
+    state = { ...state, value: { ...state.value, enabled: body.enabled }, revision: state.revision + 1 };
+    scopeListeners.forEach((fn) => fn());
+  }
+  routeSnap = { ...routeSnap, enabled: routeEnabled };
+  return Promise.resolve({ ok: true, json: () => Promise.resolve(routeSnap) });
+};
 
 const registrations = [];
 let registered = null;
 globalThis.window = {
+  // 组件里用 window.setTimeout 做 pending 硬复位（已知坑：host 侧 promise 可能永不 settle）
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
   __ModuleLoader__: {
     load: ({ factory }) => {
       const mod = factory((n) => {
@@ -54,10 +71,12 @@ globalThis.window = {
 await import("../client.js");
 
 const findReg = (name) => registrations.find((r) => r.o.name === name);
-const dockReg = findReg('conversation.input.dock');
+// 状态条挂在输入框工具栏左侧席位（conversation.input.left）；
+// 早期版本曾挂 conversation.input.dock，此探针未跟改，故在修复前长期 FAIL。
+const dockReg = findReg('conversation.input.left');
 const Dock = dockReg && dockReg.C;
 if (typeof Dock !== 'function') {
-  console.error('FAIL: dock 未注册');
+  console.error('FAIL: dock 未注册（找不到 conversation.input.left）');
   process.exit(1);
 }
 console.log('slot 注册清单:', registrations.map((r) => `${r.o.name}#${r.o.id ?? '-'}`).join(' · '));
@@ -83,8 +102,12 @@ console.table([
   row({ running: false, verdict: 'pass', domain: 'web', risk: ['payload', 'hydra'], words: [] }, 'pass（通过）'),
   row({ running: false, verdict: 'refusal', words: ['我无法'], domain: null, risk: [] }, 'refusal（拒绝）'),
 ]);
-// 通过 bound.set 走真实的“开关拨动”路径，让订阅把新值推给状态源
-bound.set('enabled', false);
+// 走真实的「开关拨动」路径关掉开关：直接调开关元素的 onClick（内部经自有路由 POST
+// 并 sync 回真值），而不是旁路调 fetch —— 旁路不会触发客户端状态源的 sync 链。
+const offTree = renderWith(undefined);
+const offSwitch = sw(offTree);
+offSwitch.props.onClick({ altKey: false, preventDefault() {}, stopPropagation() {} });
+await new Promise((r) => setTimeout(r, 40));
 console.table([row(undefined, 'off（开关关闭）')]);
 
 // 样式表在 apply() 阶段注入一次，不再随组件挂载重复插入
