@@ -91,6 +91,20 @@ function newestGptPayload(model) {
 }
 
 /**
+ * 归一化模型 id：剥掉 provider 前缀（`openai/gpt-6` → `gpt-6`）与首尾空白。
+ * 本机 model 都是裸名，但网关/中转可能下发 `provider/model` 形态 —— 不剥的话
+ * 这类 id 会一路落到「非 GPT」分支、静默走错载荷。
+ * @param {unknown} model 原始模型 id。
+ * @returns {string} 归一化后的 id。
+ */
+function normalizeModelId(model) {
+  const raw = String(model ?? "").trim();
+  if (raw.length === 0) return "";
+  const slash = raw.lastIndexOf("/");
+  return slash >= 0 && slash < raw.length - 1 ? raw.slice(slash + 1) : raw;
+}
+
+/**
  * 按模型身份选载荷 id —— **按 model 名匹配，不按 provider**。
  * 理由（本机实测）：`gpt-6.1-sol` 同时挂在 `gpt` 与 `heihei` 两个 provider 下，
  * 只看 provider 必然漏掉后者。
@@ -98,7 +112,7 @@ function newestGptPayload(model) {
  * @returns {string} 载荷 id（未知一律回落 "dsh"）。
  */
 function matchPayloadId(model) {
-  const id = String(model ?? "");
+  const id = normalizeModelId(model);
   if (id.length === 0) return "dsh";
   for (const [pattern, payloadId] of PAYLOAD_RULES) {
     if (pattern.test(id)) return payloadId;

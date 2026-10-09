@@ -149,6 +149,16 @@ if (typeof handler === "function") {
     ["claude-opus-5-5", "dsh"],
     ["", "dsh"],
     [undefined, "dsh"],
+    // ── 边界用例（真实最易翻车的输入形态） ──────────────────────────────
+    ["GPT-6.1-SOL", "gpt61"],      // 大小写混合
+    ["  gpt-6-sol  ", "gpt6"],     // 首尾空白
+    ["openai/gpt-6", "gpt6"],      // 带 provider 前缀（斜杠）—— 不归一化会落到 dsh
+    ["openai/gpt-6.1-sol", "gpt61"],
+    ["anthropic/claude-opus-5-5", "dsh"], // 带前缀的非 GPT 仍是 dsh
+    ["gpt-6", "gpt6"],             // 裸 gpt-6 无后缀
+    ["gpt-6.10", "gpt61"],         // 易错：版本号数值比较
+    ["gpt-5.10", "gpt56"],
+    ["gpt-4o", "gpt56"],           // 旧代 gpt-4o（不认识的代次按最大版本兜底）
   ];
   for (const [model, want] of CASES) {
     const got = identify(primary({ agent: { options: { model } } }));
