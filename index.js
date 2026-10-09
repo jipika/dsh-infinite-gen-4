@@ -603,17 +603,56 @@ function resolvePayloadId(context) {
 }
 
 /**
- * 从 section 求值 context 里取当前模型的 id。
- * 宿主每步传 `{ agent, scope, signal }`（dsh-agent 的 assembleContextFor），
- * 官方自己就用 `context.agent?.options.model` 注册 {{model}} 变量 —— 同一取法。
+ * 从 section 求值 context 里取「本会话当前实际使用的模型 id」。
+ *
+ * **取值链（顺序不可颠倒）**：
+ *   ① `agent.session.requestHeader().config.model` —— 会话**实际发出**的请求头。
+ *      这是唯一能反映「会话内切换过模型」的来源。
+ *   ② `agent.options.model` —— agent 创建时的声明路由（**可能是默认模型，不是会话选择**）。
+ *
+ * 为什么必须优先 ①：`agent.options` 在 `new Agent(...)` 时由
+ * `sessionController.agentOptions()` → `agentDefaultModel.currentSelection()` 固定
+ * （`AgentOptions` 的 options 是 readonly），而会话内切换模型写的是 `model/selection`
+ * 事件 + `session.requestHeader()`。本机 `agent-default-model` = `qoder/dfmodel`，
+ * 而会话选的是 `openai-codex/gpt-6.1-sol` —— 只读 ② 会把 GPT 会话误判成非 GPT 模型，
+ * 这正是「auto 模式不分流」的根因（manual 模式绕过判定所以正常）。
+ *
+ * 官方对照：`packages/api/session-controller/src/agent.ts` 的 `selectionFor(agent).current`
+ * 用的就是「pending 选择 → requestHeader().config → defaultModel」这条链。
  * agent 是宿主内部对象，全程 try 包裹，取不到就回落 DSH 自持载荷。
  * @param {object|undefined} context assemble context。
  * @returns {string|undefined} 模型 id。
  */
 function modelOf(context) {
   try {
-    const model = context?.agent?.options?.model;
-    return typeof model === "string" && model.length > 0 ? model : undefined;
+    const agent = context?.agent;
+    // ① 会话实际请求头（反映会话内切换后的真实模型）
+    const logged = agent?.session?.requestHeader?.();
+    const loggedModel = logged?.config?.model;
+    if (typeof loggedModel === "string" && loggedModel.length > 0) return loggedModel;
+    // ② 创建时声明的路由（兜底：会话还没发出过请求时）
+    const declared = agent?.options?.model;
+    if (typeof declared === "string" && declared.length > 0) return declared;
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * 取本会话当前实际使用的 provider（与 {@link modelOf} 同一条取值链，仅用于诊断展示）。
+ * @param {object|undefined} context assemble context。
+ * @returns {string|undefined} provider 名。
+ */
+function providerOf(context) {
+  try {
+    const agent = context?.agent;
+    const logged = agent?.session?.requestHeader?.();
+    const loggedProvider = logged?.config?.provider;
+    if (typeof loggedProvider === "string" && loggedProvider.length > 0) return loggedProvider;
+    const declared = agent?.options?.provider;
+    if (typeof declared === "string" && declared.length > 0) return declared;
+    return undefined;
   } catch {
     return undefined;
   }

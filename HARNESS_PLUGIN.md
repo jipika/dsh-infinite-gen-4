@@ -10,8 +10,20 @@
   消除模型推理阶段的决策犹豫与上下文 Token 浪费，让模型首 Token 直接产出可运行代码与实战步骤。
 - **按模型分流注入载荷（Model-Aware Payload Routing，v0.6.0）**：
   注入哪份载荷不再固定 —— 由 host 半的 `resolvePayloadId(context)` 每步决定：
-  - **自动模式（默认）**：解析 `context.agent.options.model` 的**版本号**再定载荷（这是宿主
-    自己注册 `{{model}}` 变量所用的同一个取法，见 `dsh-agent` 的 `assembleContextFor`）。
+  - **自动模式（默认）**：解析**本会话实际使用的模型**的版本号再定载荷。
+    **取值链的顺序不可颠倒**（这是 2026-10-09 排查出的真实坑）：
+    - ① `agent.session.requestHeader().config.model` —— 会话**实际发出**的请求头，
+      唯一能反映「会话内切换过模型」的来源；
+    - ② `agent.options.model` —— agent 创建时的声明路由，**可能是默认模型而非会话选择**。
+    `agent.options` 在 `new Agent(...)` 时由
+    `sessionController.agentOptions()` → `agentDefaultModel.currentSelection()` 固定
+    （`AgentOptions.options` 是 readonly），而会话内切模型写的是 `model/selection`
+    事件 + `requestHeader()`。本机 `agent-default-model` = `qoder/dfmodel`，
+    会话选的却是 `openai-codex/gpt-6.1-sol` —— 只读 ② 会把 GPT 会话误判成非 GPT，
+    表现为「auto 模式不分流」（manual 模式绕过判定所以正常）。
+    官方对照：`packages/api/session-controller/src/agent.ts` 的
+    `selectionFor(agent).current` 用的就是「pending → requestHeader().config →
+    defaultModel」这条链。探针里有三条回归锁钉死这个顺序。
     解析顺序：归一化 → 抽版本 → 版本映射 → 家族兜底 → 非 GPT 回落 `dsh`。
     - **归一化**（`normalizeModelId`）：trim + 转小写 + 剥 provider 前缀（`openai/gpt-6` → `gpt-6`）
       + 剥 `:` 标签后缀（openrouter 的 `:free`）+ 尾随斜杠先剥再取。

@@ -201,6 +201,39 @@ if (typeof handler === "function") {
     check(got === want, `auto: ${String(model) || "(无 model)"} → ${want}`, `实得 ${got}`);
   }
 
+  // ── 回归锁：会话实际模型必须优先于 agent.options ─────────────────────────
+  // 根因记录（2026-10-09）：`agent.options` 在 new Agent() 时由 agentDefaultModel 固定
+  // 且是 readonly，而会话内切换模型写的是 `model/selection` 事件 + session.requestHeader()。
+  // 本机默认模型是 qoder/dfmodel，会话选的是 openai-codex/gpt-6.1-sol ——
+  // 只读 agent.options 会把 GPT 会话判成非 GPT，表现为「auto 模式不分流」。
+  // 官方对照：session-controller 的 selectionFor(agent).current 用同一条
+  // 「pending → requestHeader().config → defaultModel」取值链。
+  const sessionAgent = {
+    options: { provider: "qoder", model: "dfmodel" },            // 创建时默认模型
+    session: {
+      requestHeader: () => ({ config: { provider: "openai-codex", model: "gpt-6.1-sol" } }),
+    },
+  };
+  const viaSession = identify(primary({ agent: sessionAgent, scope: sessionAgent }));
+  check(viaSession === "gpt61",
+    "auto: 会话实际模型(gpt-6.1-sol) 优先于 agent.options 默认模型(dfmodel)",
+    `实得 ${viaSession}`);
+  // 反向：会话实际模型是 deepseek 时，即便 options 写着 gpt 也不能误判
+  const sessionDeepseek = {
+    options: { provider: "gpt", model: "gpt-6.1-sol" },
+    session: { requestHeader: () => ({ config: { provider: "qoder", model: "dfmodel" } }) },
+  };
+  const viaSession2 = identify(primary({ agent: sessionDeepseek, scope: sessionDeepseek }));
+  check(viaSession2 === "dsh",
+    "auto: 会话实际模型(dfmodel) 优先，不被 agent.options 的 gpt 名盖过",
+    `实得 ${viaSession2}`);
+  // 兜底：会话尚未发出请求（无 requestHeader）时回落 agent.options
+  const freshAgent = { options: { provider: "gpt", model: "gpt-6-sol" }, session: {} };
+  const viaFallback = identify(primary({ agent: freshAgent, scope: freshAgent }));
+  check(viaFallback === "gpt6",
+    "auto: 无 requestHeader 时回落 agent.options",
+    `实得 ${viaFallback}`);
+
   // order 200：GPT 系必须为空串，DSH 必须非空
   for (const [model, wantEmpty] of [["gpt-6.1-sol", true], ["gpt-6-sol", true], ["gpt-7-x", true], ["deepseek-v4.1-flash", false]]) {
     const text = reinforce({ agent: { options: { model } } });
