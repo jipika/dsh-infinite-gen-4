@@ -18,6 +18,8 @@ const INJECTED_PROMPT_FILES = [
 const INDEX_PATH = join(ROOT, "index.js");
 const PKG_PATH = join(ROOT, "package.json");
 const BANK_PATH = join(ROOT, "tests", "prompt-bank-gen4.jsonl");
+// 拒绝判定的双向样本集（正 = 应判 refusal；负 = 应判 pass，用于守住误判为 0）
+const SAMPLES_PATH = join(ROOT, "tests", "scorer-samples.jsonl");
 
 // 品牌纯净度：以下文件不得出现其它世代（含一代）字样
 const BRAND_CLEAN_FILES = [
@@ -170,7 +172,7 @@ mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读�
 mustContain(indexSrc, 'pluginVersion: "0.6.0"', "内核版本 0.6.0");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
-mustContain(indexSrc, "stateVersion: 4", "投影版本 stateVersion 4（state 增加 sessionId）");
+mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
 
 // ---- 4b. 按模型分流注入载荷（GPT 系走 Codex 载荷） ----
 // 三份外部载荷：原样引入、互不同源，不参与 INJECTED_PROMPT_FILES 的逐字同源约束
@@ -249,6 +251,37 @@ mustContain(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT", "载荷分�
 // 离线探针钩子
 mustContain(indexSrc, "__testMatchPayloadId", "探针钩子: 导出 matchPayloadId");
 mustContain(indexSrc, "__testGatedReinforce", "探针钩子: 导出 order 200 求值器");
+
+// ---- 4c. 拒绝判定：双向样本回归 + 回滚锚点 + 干跑约束 ----
+// 判定结果将来要驱动「回滚 + 重发」，误判不可逆 —— 所以误判必须为 0。
+{
+  const SCORER_PATH = join(ROOT, "scripts", "lib", "scorer.mjs");
+  const scSource = readFileSync(SCORER_PATH, "utf8");
+  const samples = existsSync(SAMPLES_PATH)
+    ? readFileSync(SAMPLES_PATH, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l))
+    : [];
+  check(samples.length >= 30, "评分器样本集规模 ≥30", `${samples.length} 条`);
+  const sc = await import("./lib/scorer.mjs");
+  let miss = 0;
+  let fp = 0;
+  for (const r of samples) {
+    const v = sc.scoreResponse(r.text).verdict;
+    if (r.want === "refusal" && v !== "refusal") miss += 1;
+    if (r.want === "pass" && v === "refusal") fp += 1;
+  }
+  check(miss === 0, "评分器漏判为 0（该拒未拒）", `漏判 ${miss}`);
+  check(fp === 0, "评分器误判为 0（不该拒却拒 → 会触发不可逆回滚）", `误判 ${fp}`);
+  mustContain(scSource, "DELIVERY_PATTERNS", "评分器: 交付特征表");
+  mustContain(scSource, "SOFT_REFUSAL_MARKERS", "评分器: 软化词表（单独出现不计分）");
+  mustContain(scSource, "hasDelivery", "评分器: 交付判据作为拒绝的抑制剂");
+}
+// 回滚锚点：只认真实用户输入，否则将来会 rewind 到错误位置
+mustContain(indexSrc, "turnSeq", "回滚锚点: 本轮用户消息 seq");
+mustContain(indexSrc, "refusalSeq", "回滚锚点: 判拒的助手消息 seq");
+mustContain(indexSrc, 'source?.kind === "user"', "回滚锚点: 只认真实用户输入（排除注入类 user/message）");
+// 干跑约束：本阶段禁止任何自动动作，接上动作前不许删这两条
+check(!indexSrc.includes("commands.execute"), "干跑: host 侧未调用命令执行（无自动回滚）");
+check(!indexSrc.includes("agent.steer"), "干跑: 未自动重发");
 
 // 纯净零工具面架构断言：确保原生无外部功能性工具与外部资产依赖
 check(!indexSrc.includes("encodeTool"), "纯净架构: 无外部工具 encodeTool");

@@ -832,7 +832,31 @@ function armorProjectionApply(state, event) {
   // 各分支一律展开 state：sessionId 由 init 写入，事件更新时必须保留，否则 view 拿不到
   // 会话身份、按会话开关会退化成全局语义。
   if (event.type === "turn/start") {
-    return { ...state, running: true, verdict: null, words: [], safe: [], risk: [], domain: null, domainHits: 0 };
+    return {
+      ...state,
+      running: true,
+      verdict: null,
+      words: [],
+      safe: [],
+      risk: [],
+      domain: null,
+      domainHits: 0,
+      // 新一轮开始：清掉上一轮的锚点（refusalSeq 保留到下次判定，便于观测最近一次拒绝）
+      turnSeq: null,
+      delivered: false,
+    };
+  }
+  // 锚点：只认真实用户输入（source.kind === "user"）。agent-instructions 的基线/刷新
+  // 消息、runtime-context 等同样是 user/message 事件，不能当成回合起点，否则将来
+  // 回滚会指向错误的位置。这里只记录，不触发任何动作（干跑阶段）。
+  if (event.type === "user/message" && event?.data?.source?.kind === "user") {
+    return {
+      ...state,
+      turnSeq: typeof event.seq === "number" ? event.seq : null,
+      refusalSeq: null,
+      verdict: null,
+      delivered: false,
+    };
   }
   if (event.type === "assistant/message") {
     const text = armorTextOf(event?.data?.message?.content);
@@ -847,6 +871,10 @@ function armorProjectionApply(state, event) {
       risk: scored.risk.slice(0, 3),
       domain: scored.domain,
       domainHits: scored.domainHits,
+      delivered: scored.delivered === true,
+      // 判为拒绝时记下本条序号：将来「改写重试」要 rewind 到 turnSeq（inclusive）
+      // 再把改写版重发；此处仅记录，不做任何回滚/重发。
+      refusalSeq: scored.verdict === "refusal" && typeof event.seq === "number" ? event.seq : null,
     };
   }
   if (event.type === "turn/end") {
@@ -974,7 +1002,8 @@ export function apply(ctx) {
   const anySchema = { parse: (value) => value };
   const armorDef = {
     key: "armor",
-    stateVersion: 4,
+    // 5：新增 turnSeq / refusalSeq —— 回滚锚点（干跑阶段只记录，不触发任何动作）
+    stateVersion: 5,
     stateSchema: anySchema,
     // init 收到会话 header：把会话 id 记进 state，view 才能按会话算真值
     // （apply 更新 state 时会展开保留它，别改成整体替换）
@@ -986,6 +1015,12 @@ export function apply(ctx) {
       risk: [],
       domain: null,
       domainHits: 0,
+      // ── 回滚锚点（干跑，仅供观测与将来的按钮使用）──────────────────────
+      // turnSeq：本轮那条用户消息的事件序号；refusalSeq：判为拒绝的助手回复序号。
+      // 将来「改写重试」要 rewind 到 turnSeq（inclusive，连该轮一起撤掉）再重发。
+      turnSeq: null,
+      refusalSeq: null,
+      delivered: false,
       sessionId: typeof header?.id === "string" ? header.id : null,
     }),
     apply: armorProjectionApply,
