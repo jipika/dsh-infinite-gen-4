@@ -22,6 +22,38 @@
         var SETTINGS_FIELD = "enabled";
         var VERSION = "0.6.0";
 
+        /** 调 host 的旁路改写路由：只产出改写文本 —— 不回滚上下文、不自动重发。
+         *  provider/model 留空时由 host 按「设置指定 → 会话模型 → 当前默认模型」三级兜底。 */
+        function requestRewrite(payload) {
+          return fetch("/dsh-infinite-gen-4/rewrite", {
+            method: "POST",
+            headers: { "x-dsh-infinite-gen-4": "1", "content-type": "application/json" },
+            body: JSON.stringify(payload)
+          }).then(
+            function (response) { return response.json().catch(function () { return void 0; }); },
+            function () { return void 0; }
+          ).then(function (body) {
+            if (body === void 0 || body === null || typeof body !== "object") {
+              return { ok: false, error: "unreachable" };
+            }
+            return body;
+          });
+        }
+
+        /** 复制到剪贴板；不可用时返回 false（面板文本仍可手动选中复制）。 */
+        function copyText(text) {
+          try {
+            if (typeof navigator !== "undefined" && navigator.clipboard
+              && typeof navigator.clipboard.writeText === "function") {
+              navigator.clipboard.writeText(String(text));
+              return true;
+            }
+          } catch {
+            /* 剪贴板受限（非安全上下文/权限被拒）：静默降级 */
+          }
+          return false;
+        }
+
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
            那里只会漏出浏览器默认的黑色 outline。全部外观交给这张表，状态只由
@@ -47,6 +79,19 @@
           ".dsh-armor-pill[data-phase='running'] .dsh-armor-dot{background:var(--dsw-alias-state-business-primary);animation:dshArmorPulse 1.2s ease-in-out infinite}" +
           ".dsh-armor-pill[data-phase='pass'] .dsh-armor-dot{background:var(--dsw-alias-state-success-primary)}" +
           ".dsh-armor-pill[data-phase='refusal'] .dsh-armor-dot{background:var(--dsw-alias-state-error-primary)}" +
+          // ── 改写重试（B 档）：按钮 + 结果面板。只产出文本，不做回滚/重发 ──────
+          ".dsh-armor-rw-wrap{position:relative;display:inline-flex;flex:none}" +
+          ".dsh-armor-rw{box-sizing:border-box;flex:none;height:20px;padding:0 8px;border-radius:10px;border:.5px solid var(--dsw-alias-border-l2);background:transparent;color:var(--dsw-alias-label-secondary);font-family:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background 120ms ease,color 120ms ease}" +
+          ".dsh-armor-rw:hover:not(:disabled){background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary)}" +
+          ".dsh-armor-rw:disabled{cursor:default;opacity:.6}" +
+          ".dsh-armor-rw[data-state='done']{color:var(--dsw-alias-state-success-primary)}" +
+          ".dsh-armor-rw[data-state='error']{color:var(--dsw-alias-state-error-primary)}" +
+          ".dsh-armor-rw-panel{position:absolute;bottom:calc(100% + 8px);left:0;z-index:30;width:min(440px,74vw);max-height:260px;overflow:auto;box-sizing:border-box;padding:10px;border-radius:12px;border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:12px;line-height:18px;color:var(--dsw-alias-label-primary);white-space:pre-wrap;word-break:break-word}" +
+          ".dsh-armor-rw-actions{display:flex;gap:6px;margin-top:8px}" +
+          ".dsh-armor-rw-note{margin-top:6px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}" +
+          ".dsh-armor-in{box-sizing:border-box;height:28px;min-width:0;flex:1 1 140px;padding:0 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:12px;line-height:1}" +
+          ".dsh-armor-in:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}" +
+          ".dsh-armor-in:disabled{opacity:.6}" +
           // ── 开关（与 DSH 原生 Switch 同构：36×20 轨道 + 16px 滑块） ───────
           ".dsh-armor-switch{box-sizing:border-box;position:relative;flex:0 0 auto;width:36px;height:20px;padding:2px;border:0;border-radius:10px;corner-shape:round;background:var(--dsw-alias-border-l3);cursor:pointer;transition:background 120ms ease;vertical-align:middle}" +
           ".dsh-armor-switch[aria-checked='true']{background:var(--dsw-alias-brand-primary)}" +
@@ -294,14 +339,21 @@
          * 与 setting 同款：外部 store 缓存 + useSyncExternalStore 稳定引用。
          */
         function createRoutingSource() {
-          var state = { mode: "auto", manualPayload: "dsh", payloads: [], status: "loading", reason: "" };
+          var state = { mode: "auto", manualPayload: "dsh", payloads: [], rewriteProvider: "", rewriteModel: "", status: "loading", reason: "" };
           var listeners = new Set();
           var publish = function (next) {
             var reason = next.reason === void 0 ? "" : next.reason;
+            var rwProvider = next.rewriteProvider === void 0 ? state.rewriteProvider : next.rewriteProvider;
+            var rwModel = next.rewriteModel === void 0 ? state.rewriteModel : next.rewriteModel;
             if (next.mode === state.mode && next.manualPayload === state.manualPayload
               && next.status === state.status && reason === state.reason
-              && next.payloads === state.payloads) return;
-            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, status: next.status, reason: reason };
+              && next.payloads === state.payloads
+              && rwProvider === state.rewriteProvider && rwModel === state.rewriteModel) return;
+            state = {
+              mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads,
+              rewriteProvider: rwProvider, rewriteModel: rwModel,
+              status: next.status, reason: reason
+            };
             listeners.forEach(function (listener) { listener(); });
           };
           var sync = function () {
@@ -317,6 +369,8 @@
                 mode: payload.mode === "manual" ? "manual" : "auto",
                 manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : "dsh",
                 payloads: Array.isArray(payload.payloads) ? payload.payloads : [],
+                rewriteProvider: typeof payload.rewriteProvider === "string" ? payload.rewriteProvider : "",
+                rewriteModel: typeof payload.rewriteModel === "string" ? payload.rewriteModel : "",
                 status: "ready"
               });
             });
@@ -336,6 +390,8 @@
                   mode: payload.mode === "manual" ? "manual" : "auto",
                   manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : state.manualPayload,
                   payloads: state.payloads,
+                  rewriteProvider: typeof payload.rewriteProvider === "string" ? payload.rewriteProvider : state.rewriteProvider,
+                  rewriteModel: typeof payload.rewriteModel === "string" ? payload.rewriteModel : state.rewriteModel,
                   status: "ready"
                 });
               }
@@ -352,7 +408,8 @@
             },
             refresh: sync,
             setMode: function (mode) { return write({ mode: mode }); },
-            setManualPayload: function (id) { return write({ manualPayload: id }); }
+            setManualPayload: function (id) { return write({ manualPayload: id }); },
+            setRewriter: function (provider, model) { return write({ rewriteProvider: provider, rewriteModel: model }); }
           };
         }
 
@@ -434,6 +491,20 @@
           var setBusy = busyPair[1];
           var ready = snap.status === "ready";
           var payloads = Array.isArray(snap.payloads) ? snap.payloads : [];
+          // 改写器两个输入框的本地草稿：受控 input + 失焦提交（避免每敲一个字就写一次配置）。
+          // snap 变化（外部改动 / 提交后 re-sync）时回灌权威值 —— 用 ref 记住「正在编辑」，
+          // 免得打到一半被刷掉。
+          var rwPair = react.useState({ provider: "", model: "" });
+          var rwDraft = rwPair[0];
+          var setRwDraft = rwPair[1];
+          var rwEditingRef = react.useRef(false);
+          react.useEffect(function () {
+            if (rwEditingRef.current) return;
+            setRwDraft({
+              provider: typeof snap.rewriteProvider === "string" ? snap.rewriteProvider : "",
+              model: typeof snap.rewriteModel === "string" ? snap.rewriteModel : ""
+            });
+          }, [snap.rewriteProvider, snap.rewriteModel]);
 
           react.useEffect(function () { routing.refresh(); }, []);
 
@@ -515,6 +586,48 @@
               snap.mode === "auto"
                 ? "自动模式：载荷随模型实时切换，无需手动干预。"
                 : "手动模式：所有模型都使用 " + snap.manualPayload + "（GPT 系载荷只注入单段）。"
+            ),
+            // ── 改写重试（B 档）：只产出改写版，不回滚、不自动重发 ─────────────
+            react.createElement("div", { className: "dsh-armor-s-title" }, "改写重试"),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-desc" },
+              "被拒时状态条会出现「改写」按钮：在旁路独立调一次改写器，产出一版新表述供你复制使用。" +
+              "它不删会话节点、不自动重发 —— 改写在旁路完成，主会话上下文不受影响。"
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-row" },
+              react.createElement("span", { className: "dsh-armor-s-label" }, "改写器"),
+              react.createElement(
+                "div",
+                { className: "dsh-armor-seg" },
+                react.createElement("input", {
+                  className: "dsh-armor-in",
+                  type: "text",
+                  value: rwDraft.provider,
+                  placeholder: "provider（留空=跟随会话）",
+                  disabled: busy || !ready,
+                  spellCheck: false,
+                  onChange: function (e) { rwEditingRef.current = true; setRwDraft({ provider: e.target.value, model: rwDraft.model }); },
+                  onBlur: function () { rwEditingRef.current = false; run(routing.setRewriter(rwDraft.provider.trim(), rwDraft.model.trim())); }
+                }),
+                react.createElement("input", {
+                  className: "dsh-armor-in",
+                  type: "text",
+                  value: rwDraft.model,
+                  placeholder: "model（留空=跟随会话）",
+                  disabled: busy || !ready,
+                  spellCheck: false,
+                  onChange: function (e) { rwEditingRef.current = true; setRwDraft({ provider: rwDraft.provider, model: e.target.value }); },
+                  onBlur: function () { rwEditingRef.current = false; run(routing.setRewriter(rwDraft.provider.trim(), rwDraft.model.trim())); }
+                })
+              )
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-note" },
+              "留空两级兜底：先跟被拒会话自身的模型，再跟当前默认模型。挑一个「更敢写」的模型来跑改写器效果更好。"
             )
           );
         }
@@ -585,6 +698,39 @@
               payloadLabel = " · 载荷 自动（按模型）";
             }
           }
+          // ── 改写重试（B 档）────────────────────────────────────────────────
+          // 本档只做「产出改写版」：不 rewind、不自动重发。改写在 host 侧走
+          // ctx.llm.stream 独立调用，主会话上下文完全不受影响。
+          // 按钮跟随「最近一次判定」而不是 showVerdict —— 后者只在闪一下的窗口里为真，
+          // 按钮会一闪就没。
+          var rwPair = react.useState(null);
+          var rewrite = rwPair[0];
+          var setRewrite = rwPair[1];
+          var rwBusy = rewrite !== null && rewrite.status === "loading";
+          var turnText = armor && typeof armor.turnText === "string" ? armor.turnText : "";
+          var canRewrite = enabled && !running && lastVerdictRef.current === "refusal";
+          var runRewrite = function () {
+            if (rwBusy) return;
+            if (turnText.length === 0) {
+              setRewrite({ status: "error", error: "投影里没有本轮原文（重启宿主后新发一条即可）" });
+              return;
+            }
+            setRewrite({ status: "loading" });
+            requestRewrite({ original: turnText, refusal: words.join(" ") }).then(function (r) {
+              if (r && r.ok === true && typeof r.rewritten === "string") {
+                setRewrite({
+                  status: "done",
+                  text: r.rewritten,
+                  model: String(r.provider || "") + "/" + String(r.model || "")
+                });
+              } else {
+                setRewrite({
+                  status: "error",
+                  error: String((r && r.error) || "unknown") + (r && r.detail ? "：" + r.detail : "")
+                });
+              }
+            });
+          };
           var badgeTitle = enabled
             ? "无限四代 v" + VERSION + " — " + scopeLabel + "注入开启中" + payloadLabel
             : "无限四代 — " + scopeLabel + "已关闭（系统提示词零残留）";
@@ -603,7 +749,43 @@
               react.createElement("span", { className: "dsh-armor-dot" }),
               react.createElement("span", null, text)
             ),
-            react.createElement(ArmorSwitch, { projected: enabled })
+            react.createElement(ArmorSwitch, { projected: enabled }),
+            react.createElement("span", { className: "dsh-armor-rw-wrap" },
+              react.createElement("button", {
+                type: "button",
+                className: "dsh-armor-rw",
+                "data-state": rewrite === null ? "idle" : rewrite.status,
+                onClick: runRewrite,
+                disabled: rwBusy || !canRewrite,
+                title: "旁路改写这条被拒的请求：只产出一版新表述，不会回滚会话、也不会自动重发"
+              }, rwBusy ? "改写中…" : rewrite !== null && rewrite.status === "done" ? "已改写" : "改写"),
+              rewrite !== null
+                ? react.createElement("div", { className: "dsh-armor-rw-panel" },
+                    react.createElement("div", null,
+                      rewrite.status === "error"
+                        ? "改写失败：" + rewrite.error
+                        : rewrite.text),
+                    react.createElement("div", { className: "dsh-armor-rw-note" },
+                      rewrite.status === "done"
+                        ? "改写器 " + rewrite.model + " · 仅产出文本，未改动会话；复制后自行发送"
+                        : "只产出文本，不触碰会话上下文（不删节点、不重发）"),
+                    react.createElement("div", { className: "dsh-armor-rw-actions" },
+                      rewrite.status === "done"
+                        ? react.createElement("button", {
+                            type: "button",
+                            className: "dsh-armor-opt",
+                            onClick: function () { copyText(rewrite.text); }
+                          }, "复制")
+                        : null,
+                      react.createElement("button", {
+                        type: "button",
+                        className: "dsh-armor-opt",
+                        onClick: function () { setRewrite(null); }
+                      }, "关闭")
+                    )
+                  )
+                : null
+            )
           );
         }
         function apply(ctx) {

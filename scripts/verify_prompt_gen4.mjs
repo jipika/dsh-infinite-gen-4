@@ -172,7 +172,7 @@ mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读�
 mustContain(indexSrc, 'pluginVersion: "0.6.0"', "内核版本 0.6.0");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
-mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
+mustContain(indexSrc, "stateVersion: 6", "投影版本 stateVersion 6（回滚锚点 + 改写原文/产出）");
 
 // ---- 4b. 按模型分流注入载荷（GPT 系走 Codex 载荷） ----
 // 三份外部载荷：原样引入、互不同源，不参与 INJECTED_PROMPT_FILES 的逐字同源约束
@@ -240,11 +240,35 @@ mustContain(indexSrc, '"manual"', "配置: manual 模式取值");
 mustContain(indexSrc, "readState", "配置: 多字段状态解析（三层优先级链）");
 mustContain(indexSrc, "resolveField", "配置: 逐字段优先级解析");
 // POST 校验放宽为「至少一个合法字段」——并且非法值仍拒绝
-mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload }",
+mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload, rewriteProvider, rewriteModel }",
   "配置: POST 放宽为至少一个合法字段");
 mustContain(indexSrc, "expected { mode:", "配置: 非法 mode 仍 400");
 mustContain(indexSrc, "expected { manualPayload:", "配置: 非法 manualPayload 仍 400");
 mustContain(indexSrc, 'typeof body.enabled !== "boolean"', "配置: enabled 类型校验保留");
+// ---- 4d. 改写重试（B 档）：旁路改写只产出文本，绝不带动作 ----
+mustContain(indexSrc, "REWRITE_SYSTEM", "改写: 改写器系统提示存在");
+mustContain(indexSrc, "buildRewritePrompt", "改写: 反思式提示词构造");
+mustContain(indexSrc, "callRewriter", "改写: 旁路调用封装");
+mustContain(indexSrc, 'ctx.inject(["llm"]', "改写: llm 服务惰性注入（不进模块级 inject）");
+mustContain(indexSrc, 'chunk.type === "text-delta"', "改写: 按 text-delta 累积流式输出");
+mustContain(indexSrc, 'chunk.reason?.kind === "error"', "改写: 检查 finish 的静默失败");
+mustContain(indexSrc, '"/dsh-infinite-gen-4/rewrite"', "改写: 自有路由入口");
+mustContain(indexSrc, "currentDefaultSelection", "改写: 改写器模型三级兜底（含默认模型）");
+mustContain(indexSrc, "applied: false", "改写: 明确标记只产出不动作");
+// 本档仍然禁止任何自动动作 —— 接上回滚/重发前不许删这两条
+check(!indexSrc.includes("commands.execute"), "干跑: host 侧未调用命令执行（无自动回滚）");
+check(!indexSrc.includes("agent.steer"), "干跑: 未自动重发");
+// 改写在旁路完成，不得写进记忆（记忆钩子的落点不在本仓库，但仍锁住「不落盘」）
+check(!indexSrc.includes("memory/topics"), "改写: 产出不写入记忆");
+// 客户端侧同样禁止自动回滚/重发，只允许读出改写文本
+{
+  const clientSrc = readFileSync(join(ROOT, "client.js"), "utf8");
+  mustContain(clientSrc, "requestRewrite", "客户端: 改写调用封装");
+  mustContain(clientSrc, "/dsh-infinite-gen-4/rewrite", "客户端: 复用 host 改写路由");
+  check(!clientSrc.includes("commands.execute"), "客户端: 未调命令执行（不自动回滚）");
+  check(!clientSrc.includes("/rewind"), "客户端: 未调 rewind（本档不做回滚）");
+  mustContain(clientSrc, "copyText", "客户端: 改写结果可复制（人工接管）");
+}
 // 取不到模型时必须回落 DSH 载荷，绝不返回空串（空串是「关掉」的语义）
 mustContain(indexSrc, 'return "dsh";', "载荷分流: 未知模型回落 dsh");
 mustContain(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT", "载荷分流: 文本缺失回落 DSH 自持");
