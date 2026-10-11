@@ -36,23 +36,35 @@ const check = (ok, label, detail = "") => {
   (ok ? passes : failures).push(`${label}${!ok && detail ? " — " + detail : ""}`);
 };
 
-// ── 1. 载荷文件确实读进来了（四份都非空） ───────────────────────────────────
+// ── 1. 载荷文件确实读进来了（七份都非空） ───────────────────────────────────
 const payloads = mod.__testPayloads ?? undefined;
 check(typeof mod.apply === "function", "index.js 导出 apply");
 check(Array.isArray(mod.__testPayloadIds), "index.js 导出载荷 id 白名单");
-check(JSON.stringify(mod.__testPayloadIds) === JSON.stringify(["dsh", "gpt61", "gpt6", "gpt56"]),
-  "载荷 id 白名单 = dsh/gpt61/gpt6/gpt56", JSON.stringify(mod.__testPayloadIds));
+check(JSON.stringify(mod.__testPayloadIds)
+  === JSON.stringify(["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"]),
+  "载荷 id 白名单 = dsh/dsh-gen4/gpt61/gpt6/gpt56/claude/grok", JSON.stringify(mod.__testPayloadIds));
 
-// 直接核对磁盘上的三份 GPT 载荷与源文件逐字一致
+// 直接核对磁盘上的六份外部载荷（GPT 三份 + Keysmith 三份）与源文件逐字一致
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 const SOURCES = {
   "prompts/gpt-6.1-sol.md": "37382fb7082652e5b18c99fa5086fbc6d414993eaeae2ec7852ba372b031acac",
   "prompts/gpt-6-astra.md": "d6976b90b399b9e11df9430dd3663072288f1d858a4910b1e9d5109b3ae7e660",
   "prompts/gpt-5.6-sol.md": "c71c50e2f7a303b5eebc2b24c0b1ca0d9c753e3240db05c3e472c679907898f7",
+  "prompts/dsh-unrestricted.md": "6b6e145b696d5a7edd05452c561d514d2b4fbb60c319a1af85c394e39032e78f",
+  "prompts/claude-keysmith.md": "2792d33890ed06948eecfc4eb8371db6b6aa5e8111b1623424100e077bcb32ca",
+  "prompts/grok-keysmith.md": "3c669118d67690856f3ac11cd0f2beb687aa6e718dc76ed3f54c0751e01e48c9",
 };
 for (const [rel, want] of Object.entries(SOURCES)) {
   const got = sha(join(PLUGIN_ROOT, rel));
   check(got === want, `载荷逐字一致 ${rel}`, `sha256 ${got} != ${want}`);
+}
+// 表内文本必须等于文件原文（证明 escapePromptVars 对这批载荷是 no-op）
+for (const [id, rel] of [["dsh", "prompts/dsh-unrestricted.md"],
+  ["dsh-gen4", "prompts/infinite-gen-4.md"],
+  ["claude", "prompts/claude-keysmith.md"],
+  ["grok", "prompts/grok-keysmith.md"]]) {
+  const fileText = readFileSync(join(PLUGIN_ROOT, rel), "utf8");
+  check(payloads?.[id]?.text === fileText, `载荷表文本 == 文件原文 ${id}`);
 }
 
 // ── 2. 手工建 mock ctx 调 apply()，捕获两个 section 的 text 求值器 ──────────
@@ -90,17 +102,26 @@ check(typeof reinforce === "function", "order 200 的 text 是求值函数");
 // 更稳的做法：直接看 resolvePayloadId 的行为 —— 但它是模块内部函数。
 // 因此这里通过「求值器返回的文本特征」反推选中了哪份载荷。
 const SIG = {
-  dsh: "Instructions from: ~/.dsh/AGENTS.md",
+  // 自持档换成了 Keysmith 短稿（0.7.0）；dsh-gen4 仍是原契约稿
+  dsh: "senior engineer and writer with twenty years",
+  "dsh-gen4": "Instructions from: ~/.dsh/AGENTS.md",
   gpt61: "INJECTED REVISION ACTION",
   gpt56: "SINGLE-PASS TASK COMPILER",
+  claude: "# Project rules",
+  grok: "<|im_start|>system",
 };
 const identify = (text) => {
   if (text.length === 0) return "empty";
+  // 顺序敏感：grok 的闭合标签与 dsh-gen4 的署名互不重叠，但 claude 的
+  // `# Project rules` 与自持稿的 `# Project rules`（若将来合并）也不能混 —— 先判最特异的三条
+  if (text.includes(SIG.grok)) return "grok";
+  if (text.includes(SIG.claude)) return "claude";
   if (text.includes(SIG.gpt56)) return "gpt56";
   if (text.includes(SIG.gpt61)) {
     // astra 与 6.1 都以 INJECTED REVISION ACTION 开头，用 astra 独有的段名区分
     return text.includes("LOCAL OBJECT ROUTING") ? "gpt6" : "gpt61";
   }
+  if (text.includes(SIG["dsh-gen4"])) return "dsh-gen4";
   if (text.includes(SIG.dsh)) return "dsh";
   return "unknown";
 };
@@ -152,7 +173,12 @@ if (typeof handler === "function") {
     ["gpt-10", "gpt61"],           // 未来 10 代（两位主版本，不被当粘连拆）
     ["deepseek-v4.1-flash", "dsh"],
     ["glm-5.3", "dsh"],
-    ["claude-opus-5-5", "dsh"],
+    ["glm-5.3-flash", "dsh"],
+    ["claude-opus-5-5", "claude"],
+    ["claude-sonnet-4-5", "claude"],
+    ["grok-4.6", "grok"],
+    ["grok-4.7", "grok"],
+    ["x-ai/grok-4.7", "grok"],
     ["gemini-3.8-flash-high", "dsh"],
     ["", "dsh"],
     [undefined, "dsh"],
@@ -183,7 +209,7 @@ if (typeof handler === "function") {
     ["gpt-6/", "gpt6"],            // 尾随斜杠（不该退化成空串）
     ["  openai/gpt-6  ", "gpt6"],  // 空白 + 斜杠混合
     ["openai/", "dsh"],            // 仅前缀无模型名
-    ["anthropic/claude-opus-5-5", "dsh"], // 带前缀的非 GPT
+    ["anthropic/claude-opus-5-5", "claude"], // 带前缀 + claude 家族（归一化剥前缀后同路）
     // ── 小数代次（按数字段长度判定，不靠字典序） ──────────────────────────
     ["gpt-6", "gpt6"],             // 裸 6 代无后缀
     ["gpt-6.10", "gpt61"],         // 两位 minor
@@ -288,6 +314,28 @@ if (typeof handler === "function") {
   // 手动模式下 order 200：载荷非 dsh → 空串
   const manReinforce = reinforce({ agent: { options: { model: "deepseek-v4.1-flash" } } });
   check(manReinforce.length === 0, "manual(gpt56): order 200 为空串", `实长 ${manReinforce.length}`);
+
+  // ── 0.7.0：备用自持档 dsh-gen4 —— 手动选中它时必须双段且两段同源 ──────────
+  const backGen4 = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "dsh-gen4" });
+  check(backGen4?.ok === true, "POST mode=manual + manualPayload=dsh-gen4", JSON.stringify(backGen4));
+  const ctxDeepseek = { agent: { options: { model: "deepseek-v4.1-flash", provider: "deepseek" } } };
+  const g4Primary = primary(ctxDeepseek);
+  const g4Reinforce = reinforce(ctxDeepseek);
+  check(identify(g4Primary) === "dsh-gen4",
+    "manual(dsh-gen4): 选中的是原契约稿", `实得 ${identify(g4Primary)}`);
+  check(g4Reinforce === g4Primary,
+    "manual(dsh-gen4): order 200 与 order 100 同源逐字一致",
+    `长度 ${g4Reinforce.length} vs ${g4Primary.length}`);
+  // 反向：外部档在手动模式下也必须单段
+  const backClaude = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "claude" });
+  check(backClaude?.ok === true, "POST mode=manual + manualPayload=claude", JSON.stringify(backClaude));
+  check(identify(primary(ctxDeepseek)) === "claude", "manual(claude): 选中 Claude 载荷");
+  check(reinforce(ctxDeepseek).length === 0, "manual(claude): order 200 为空串（单段）");
+  // 非自持档的 order 100 / 200 组合：无论模型是谁都单段
+  const backGrok = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "grok" });
+  check(backGrok?.ok === true, "POST mode=manual + manualPayload=grok", JSON.stringify(backGrok));
+  check(identify(primary(ctxDeepseek)) === "grok", "manual(grok): 选中 Grok 载荷");
+  check(reinforce(ctxDeepseek).length === 0, "manual(grok): order 200 为空串（单段）");
 
   // 切回 auto
   const back = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "auto" });

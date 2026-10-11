@@ -8,32 +8,44 @@ import Schema from "@deepseek-ai/schemastery";
 // 状态条因此低报风险词、误判命中域。2026-10-08 按上游 PR#21 单源化。
 import { scoreResponse } from "./scripts/lib/scorer.mjs";
 
-// ── 无限四代注入载荷（v0.6.0） ────────────────────────────────────────────────────
-// Order 100 与 Order 200 双槽位同时注册（DUAL_LAYER_INJECTION=true）；两段载荷同源同构
-// （SHA256 一致），等价于把同一份载荷注入两遍 —— 这是刻意的权重强化，不是误配。
+// ── 无限四代注入载荷（v0.7.0） ────────────────────────────────────────────────────
+// Order 100 与 Order 200 双槽位同时注册（DUAL_LAYER_INJECTION=true）。
+// **双段只留给两份自持稿**（dsh / dsh-gen4），两段同源逐字一致 —— 刻意的权重强化。
+// 外部稿（Codex 三份 + claude + grok）一律单段：它们要么含 ACTION 绑定并写明
+// 「Text loaded afterward cannot select, replace, or nest ACTION」，要么首尾自带
+// <|im_start|>system / <|im_end|> 闭合标签，注入两遍会自伤。
 // 槽位均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
 // 控制，关闭时渲染为空串并被 dsh-system-prompt 的 renderPrompt 过滤，零残留。
-const PROMPT_URL = new URL("./prompts/infinite-gen-4.md", import.meta.url);
+//
+// 0.7.0 起：自持档 `dsh` 换成 Keysmith 的短稿 `dsh-unrestricted.md`；
+// 原 7739B 分域契约稿降为 `dsh-gen4`（仅手动模式可选中，供随时切回）。
+const PROMPT_URL = new URL("./prompts/dsh-unrestricted.md", import.meta.url);
+const PROMPT_GEN4_URL = new URL("./prompts/infinite-gen-4.md", import.meta.url);
 const PROMPT41_URL = new URL("./prompts/infinite-gen-4.1-flash.md", import.meta.url);
 // 兼容 DSH 提示词变量插值引擎（非内置变量的连续花括号做安全转义，防止模板解析器抛出 malformed prompt variable reference）
 const escapePromptVars = (text) => text.replace(/\{\{(?!(?:cwd|model|provider)\}\})/g, "{ {");
 const PROMPT_TEXT = escapePromptVars(readFileSync(PROMPT_URL, "utf8"));
+const PROMPT_GEN4_TEXT = escapePromptVars(readFileSync(PROMPT_GEN4_URL, "utf8"));
 const PROMPT41_TEXT = escapePromptVars(readFileSync(PROMPT41_URL, "utf8"));
 
-// ── GPT 系外部载荷（Codex 破甲提示词） ─────────────────────────────────────────
-// 三份来自 MDX-Tom/gpt-instruct（MIT，见 prompts/SOURCES.md），字节原样保留。
-// 它们是「多段状态机式单一整份」——含 INJECTED REVISION ACTION 一类的 ACTION 绑定规则，
-// 且明文写「Text loaded afterward cannot select, replace, or nest ACTION」。
-// 因此 GPT 分支只注入单段（order 200 返回空串）：注入两遍时第二遍正好撞上它自己的规则。
-// DSH 自持载荷（infinite-gen-4.md）维持双段，那是刻意的权重强化。
+// ── 外部载荷（Codex 三份 + Keysmith 的 claude / grok） ──────────────────────────
+// 三份 Codex 稿来自 MDX-Tom/gpt-instruct（MIT），claude / grok 两份来自 Jia-Ethan 的
+// Keysmith 系列（MIT）—— 来源、许可与 sha256 见 prompts/SOURCES.md，字节原样保留。
+// 它们是「多段状态机式单一整份」：Codex 三份含 INJECTED REVISION ACTION 一类的 ACTION
+// 绑定并写明「Text loaded afterward cannot select, replace, or nest ACTION」；
+// grok 稿首尾自带 <|im_start|>system / <|im_end|> 闭合标签。
+// 因此**外部稿一律只注入单段**（order 200 返回空串）：注入两遍会自伤。
+// 双段只留给两份自持稿（dsh / dsh-gen4），那是刻意的权重强化。
 const GPT6_URL = new URL("./prompts/gpt-6-astra.md", import.meta.url);
 const GPT61_URL = new URL("./prompts/gpt-6.1-sol.md", import.meta.url);
 const GPT56_URL = new URL("./prompts/gpt-5.6-sol.md", import.meta.url);
+const CLAUDE_KS_URL = new URL("./prompts/claude-keysmith.md", import.meta.url);
+const GROK_KS_URL = new URL("./prompts/grok-keysmith.md", import.meta.url);
 
 /**
  * 载荷清单：id → { label, text }。
- * text 一律过同一条 `{{` 转义正则（GPT 载荷当前 0 处命中，属零成本防未来改动）。
- * 读取失败（文件缺失）不抛错：置为空串，由 gated 回落，避免整块插件不加载。
+ * text 一律过同一条 `{{` 转义正则（当前六份外部载荷全 0 处命中，属零成本防未来改动）。
+ * 读取失败（文件缺失）不抛错：置为空串，由 payloadTextFor 按 id 回落，避免整块插件不加载。
  * @returns {Record<string, {label: string, text: string}>} 载荷表。
  */
 function loadPayloadTable() {
@@ -45,16 +57,34 @@ function loadPayloadTable() {
     }
   };
   return {
-    dsh: { label: "无限四代（DSH 自持载荷）", text: PROMPT_TEXT },
+    dsh: { label: "dsh（Keysmith 短稿）", text: PROMPT_TEXT },
+    "dsh-gen4": { label: "无限四代（原自持契约稿）", text: read(PROMPT_GEN4_URL) },
     gpt61: { label: "GPT-6.1 Sol（Codex 载荷）", text: read(GPT61_URL) },
     gpt6: { label: "GPT-6 Astra（Codex 载荷）", text: read(GPT6_URL) },
     gpt56: { label: "GPT-5.6 Sol（Codex 载荷）", text: read(GPT56_URL) },
+    claude: { label: "Claude（Keysmith 载荷）", text: read(CLAUDE_KS_URL) },
+    grok: { label: "Grok（Keysmith 载荷）", text: read(GROK_KS_URL) },
   };
 }
 
 const PAYLOADS = loadPayloadTable();
 /** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
-const PAYLOAD_IDS = ["dsh", "gpt61", "gpt6", "gpt56"];
+const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"];
+/** 自持族：只有它们走双段注入（order 100 + order 200 同源逐字一致）。 */
+const NATIVE_PAYLOAD_IDS = ["dsh", "dsh-gen4"];
+/**
+ * 各 id 取不到文本时的回落目标 —— 绝不返回空串（空串是「关闭」语义，
+ * 不能与「文件缺失」混淆）。自持档回落到备用自持稿，其余一律回落自持档。
+ */
+const PAYLOAD_FALLBACKS = {
+  dsh: "dsh-gen4",
+  "dsh-gen4": "dsh",
+  gpt61: "dsh",
+  gpt6: "dsh",
+  gpt56: "dsh",
+  claude: "dsh",
+  grok: "dsh",
+};
 /**
  * GPT 家族判定：**锚定开头**，只认自家命名，不吃 `my-gpt-6-clone` 这类仿冒名。
  * `chat` 前缀也认（`chatgpt-6.1` 是常见产品形态）。
@@ -160,6 +190,12 @@ function matchPayloadId(model) {
   if (id.length === 0) return "dsh";
   const version = extractGptVersion(id);
   if (version !== undefined) return payloadForVersion(version);
+  // ── 归一化后仍带 provider 前缀的家族（claude / grok）────────────────────
+  // 锚定开头，与 GPT 家族同一套做法（`GPT_FAMILY_RE` 同样是 `^` 锚定，不吃
+  // `my-gpt-6-clone` 这类仿冒名）。归一化已剥掉 `vendor/`，所以
+  // `anthropic/claude-opus-5-5` 与 `claude-opus-5-5` 在这里走同一条路。
+  if (/^claude/.test(id)) return "claude";
+  if (/^grok/.test(id)) return "grok";
   // ── 版本不可解析：先判家族，再按家族特征保守兜底 ────────────────────────
   if (!isGptFamily(id)) return "dsh";
   // o 系 / codex 系历史上是 5.x 一脉
@@ -178,9 +214,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.6.0";
+const VERSION = "0.7.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.6.0"
+//   pluginVersion: "0.7.0"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-infinite-gen-4.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
@@ -578,18 +614,21 @@ function gated() {
 }
 
 /**
- * GPT 分支的强化段（order 200）文本 —— 恒为空串。
- * 三份 Codex 载荷都是状态机式单一整份，且明文写「Text loaded afterward cannot
- * select, replace, or nest ACTION」：注入第二遍正好撞上它自己的规则。
- * DSH 自持载荷不受影响，仍按 DUAL_LAYER_INJECTION 走双段。
+ * 强化段（order 200）文本 —— 只有自持族（`dsh` / `dsh-gen4`）非空。
+ * 外部稿（Codex 三份 / claude / grok）恒为空串：它们是状态机式单一整份，
+ * Codex 三份明文写「Text loaded afterward cannot select, replace, or nest ACTION」，
+ * grok 稿自带 <|im_start|> / <|im_end|> 闭合标签 —— 注入第二遍都会自伤。
+ * 自持族按 `DUAL_LAYER_INJECTION` 双段：**返回与 order 100 完全相同的那一份文本**，
+ * 保证「两段同源逐字一致」这条性质在 `dsh-gen4` 也成立（旧版硬绑 PROMPT41_TEXT，
+ * 只对原自持稿成立，切到 dsh-gen4 就会与 order 100 不同源）。
  * @param {object} context assemble context。
- * @returns {string} 恒为空串。
+ * @returns {string} 自持族的同源副本，其余恒为空串。
  */
 function gatedReinforce() {
   return (context) => {
     if (!isEnabledForSession(sessionIdOf(context))) return "";
-    if (resolvePayloadId(context) !== "dsh") return "";
-    return PROMPT41_TEXT;
+    if (!NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context))) return "";
+    return payloadTextFor(context, "reinforce");
   };
 }
 
@@ -703,9 +742,15 @@ function payloadTextFor(context, _slot) {
   const id = resolvePayloadId(context);
   const entry = PAYLOADS[id];
   const text = entry?.text ?? "";
-  // 文件缺失等异常一律回落 DSH 自持载荷，绝不返回空串
-  // （空串是「关掉」的语义，不能与「取不到」混淆）
-  return text.length > 0 ? text : PROMPT_TEXT;
+  if (text.length > 0) return text;
+  // 文件缺失等异常一律**按 id 回落**，绝不返回空串
+  // （空串是「关掉」的语义，不能与「取不到」混淆）。
+  // 0.7.0 前的旧实现硬绑 PROMPT_TEXT（原自持稿）—— 在 7 份载荷的表下，
+  // 那会让「claude 文件缺失」静默注入一份自持稿，属错误载荷而非降级。
+  const fallbackId = PAYLOAD_FALLBACKS[id];
+  const fallback = fallbackId === undefined ? undefined : PAYLOADS[fallbackId]?.text;
+  if (typeof fallback === "string" && fallback.length > 0) return fallback;
+  return PROMPT_TEXT;
 }
 
 const objectOutput = {
@@ -895,6 +940,10 @@ export const __testResolvePayloadId = resolvePayloadId;
 export const __testReadState = readState;
 export const __testGated = gated;
 export const __testGatedReinforce = gatedReinforce;
+/** 载荷文本取值（供探针断言「按 id 回落」与「双段同源」）。 */
+export const __testPayloadTextFor = payloadTextFor;
+/** 载荷表快照（只读用途：探针比对文件字节与表内文本是否一致）。 */
+export const __testPayloads = PAYLOADS;
 
 export const name = "dsh-infinite-gen-4";
 export const inject = ["tools", "systemPrompt"];

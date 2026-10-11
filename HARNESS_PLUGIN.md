@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — 无限四代 / dsh-infinite-gen-4 (v0.6.0)
+# DeepSeek Harness Plugin — 无限四代 / dsh-infinite-gen-4 (v0.7.0)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**无限四代（Infinite Generation Four）**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -8,7 +8,7 @@
 
 - **原生零工具面架构（Pure Zero-Tool Architecture）**：插件不挂载外部冗余功能性工具 Schema，
   消除模型推理阶段的决策犹豫与上下文 Token 浪费，让模型首 Token 直接产出可运行代码与实战步骤。
-- **按模型分流注入载荷（Model-Aware Payload Routing，v0.6.0）**：
+- **按模型分流注入载荷（Model-Aware Payload Routing，v0.7.0）**：
   注入哪份载荷不再固定 —— 由 host 半的 `resolvePayloadId(context)` 每步决定：
   - **自动模式（默认）**：解析**本会话实际使用的模型**的版本号再定载荷。
     **取值链的顺序不可颠倒**（这是 2026-10-09 排查出的真实坑）：
@@ -24,7 +24,7 @@
     官方对照：`packages/api/session-controller/src/agent.ts` 的
     `selectionFor(agent).current` 用的就是「pending → requestHeader().config →
     defaultModel」这条链。探针里有三条回归锁钉死这个顺序。
-    解析顺序：归一化 → 抽版本 → 版本映射 → 家族兜底 → 非 GPT 回落 `dsh`。
+    解析顺序：归一化 → 抽版本 → 版本映射 → **claude / grok 家族锚定** → GPT 家族兜底 → 其余回落 `dsh`。
     - **归一化**（`normalizeModelId`）：trim + 转小写 + 剥 provider 前缀（`openai/gpt-6` → `gpt-6`）
       + 剥 `:` 标签后缀（openrouter 的 `:free`）+ 尾随斜杠先剥再取。
     - **版本抽取**（`extractGptVersion`）**容忍各种写法**，不要求 ID 规范：
@@ -43,27 +43,36 @@
       故 `my-gpt-6-clone` 这类仿冒名不会被误认。
     - 实测覆盖 44 种输入形态（含 `gpt-35-turbo` 这类 Azure 旧命名、`gpt-4-0613` 日期戳、
       多段 provider 前缀、尾随斜杠、空串），见 `tests/payload-routing-probe.mjs`。
+  - **claude / grok 家族**（v0.7.0 新增）：归一化后以 `claude` 或 `grok` 开头者各走对应的
+    Keysmith 载荷。锚定开头与 GPT 家族同一套做法；因归一化已剥掉 `vendor/` 前缀，
+    `anthropic/claude-opus-5-5` 与 `claude-opus-5-5` 走同一条路。两条分支必须位于
+    「非 GPT 家族 → dsh」兜底**之前**（verify 有顺序断言钉死）。
   - **手动模式**：固定使用 `manualPayload` 指定的那一份，忽略模型身份。
   - **按 model 名匹配而非 provider**：同一个 model 名可能挂在多个 provider 下
     （本机 `gpt-6.1-sol` 同时在 `gpt` 与 `heihei` 两个 provider 里），只看 provider 必然漏。
-  - **GPT 系只注入单段**：三份 Codex 载荷都是「多段状态机式单一整份」，含 `ACTION` 绑定规则
-    并明文写「Text loaded afterward cannot select, replace, or nest ACTION」——
-    注入两遍时第二遍正好撞上它自己的规则。故 `order 200` 在 GPT 分支恒返回空串；
-    DSH 自持载荷不受影响，仍按 `DUAL_LAYER_INJECTION` 走双段。
-  - **取不到模型时回落 DSH 自持载荷**，绝不返回空串（空串是「关掉」的语义，两者不能混淆）。
-- **设置页 tab（v0.6.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-infinite-gen-4`，
+  - **仅自持族双段**（v0.7.0 收紧）：`order 200` 只对 `NATIVE_PAYLOAD_IDS = ["dsh", "dsh-gen4"]`
+    非空，且返回**与 order 100 完全相同的那一份文本**（保证两段同源逐字一致）。
+    五份外部载荷恒单段 —— Codex 三份含 `ACTION` 绑定并明文写「Text loaded afterward cannot
+    select, replace, or nest ACTION」，Claude / Grok 两份同为整份契约形态，
+    Grok 稿更自带 `<|im_start|>system` / `<|im_end|>` 闭合标签，注入两遍都会自伤。
+  - **取不到模型时回落自持档 `dsh`**，绝不返回空串（空串是「关掉」的语义，两者不能混淆）。
+  - **文本缺失按 id 回落**（v0.7.0）：`PAYLOAD_FALLBACKS` 让 claude / grok / GPT 三档回落到
+    `dsh`，`dsh` 回落到 `dsh-gen4`。旧实现硬绑 `PROMPT_TEXT`（原自持稿），在 7 份载荷的表下
+    会让「claude 文件缺失」静默注入一份自持稿 —— 属错误载荷而非降级。
+- **设置页 tab（v0.7.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-infinite-gen-4`，
   宿主按包名把 tab 归到本插件那一行），提供「自动 / 手动」模式切换，以及手动模式下的
-  载荷单选（四份：dsh / gpt61 / gpt6 / gpt56）。写入走 host 自有路由
+  载荷单选（七份：dsh / dsh-gen4 / gpt61 / gpt6 / gpt56 / claude / grok）。写入走 host 自有路由
   `/dsh-infinite-gen-4/settings`，读走同一路由的 GET（返回 `mode` / `manualPayload` /
   `payloads` / `resolvedPayload`）。
 - **双层提示词协同注入（Dual-Layer Injection）**：
   - `infinite-gen-4:global-system-prompt`（Order 100）→ 载荷由分流决定（见上）
-  - `infinite-gen-4:dual-layer-reinforce`（Order 200）→ `prompts/infinite-gen-4.1-flash.md`
-    （**仅 DSH 自持载荷生效**；GPT 分支恒为空串）
-  - 两份 DSH 自持载荷同源同构，SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
+  - `infinite-gen-4:dual-layer-reinforce`（Order 200）→ **与 Order 100 同一份文本**，
+    仅自持族（`dsh` / `dsh-gen4`）非空；外部五份（Codex 三档 / Claude / Grok）恒为空串。
+  - 两份自持稿（`prompts/dsh-unrestricted.md` 与 `prompts/infinite-gen-4.md`）各自与
+    其 `.1-flash` 镜像同源同构、SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
     开关控制（**当前 `true` = 双段，同一份载荷注入两遍做权重强化**；改 `false` 即单段注入）。
   - 载荷中的 `{{...}}` 非内置变量由 `index.js` 做安全转义，避免模板解析器抛错
-    （三份 GPT 载荷当前 0 处 `{{`，仍过同一条正则，属零成本防未来改动）。
+    （六份外部载荷当前 0 处 `{{`，仍过同一条正则，属零成本防未来改动）。
 - **对话框热开关（Dialog Switch，v0.5.0）**：客户端状态条右侧的内联开关写 settings
   namespace `dsh-infinite-gen-4` 的 `enabled` 字段（用户层 → `~/.dsh/settings.yaml`，热重载）。
   两段提示词注册为**条件段**：关闭时 `text` 求值函数返回空串，`dsh-system-prompt` 的
@@ -132,14 +141,15 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | v0.4.0 | 双层注入收敛为同源同构内核；注入槽位统一为 `infinite-gen-4:*`；内核载荷与强化镜像逐字一致 |
 | v0.5.0 | 新增对话框热开关：条件段 + settings namespace，**默认关闭**；关闭时零残留；状态条联动灰态；profile 工具回报开关状态 |
 | **v0.6.0** | 按模型分流注入载荷：GPT 系走三份 Codex 载荷（**按 model 名的版本号语义解析**，容忍各种写法，单段注入），其余走 DSH 自持载荷（双段）；新增 `mode`(auto/manual) + `manualPayload` 配置与设置页 tab |
+| **v0.7.0** | 融入 Keysmith 系列载荷：自持档 `dsh` 换成 keysmith 短稿，原 7739B 契约稿降为可切换的备用档 `dsh-gen4`；新增 `claude`（`^claude`）与 `grok`（`^grok`）两条家族锚定分支；载荷表 4 → 7 项；**双段收紧为仅自持族**，`order 200` 改为跟随 `order 100` 的同一份文本；文本缺失改为**按 id 回落**（`PAYLOAD_FALLBACKS`） |
 
 ## Local verification
 
 ```powershell
 node --check index.js && node --check client.js
-node scripts/verify_prompt_gen4.mjs    # 199 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
-node tests/payload-routing-probe.mjs   # 77 项：分流矩阵（49 组模型形态）+ 单段/双段 + 手动模式 + 400 分支
-node tests/armor-settings-probe.mjs    # 22 项：设置页 tab 渲染与写入路径
+node scripts/verify_prompt_gen4.mjs    # 240 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
+node tests/payload-routing-probe.mjs   # 104 项：分流矩阵 + 单段/双段 + 手动模式 + 400 分支
+node tests/armor-settings-probe.mjs    # 25 项：设置页 9 按钮（2 模式 + 7 载荷）+ 写入路径
 node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染
 ```
 

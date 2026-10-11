@@ -8,8 +8,9 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// 备用自持稿（0.7.0 起：自持档 `dsh` 换成 Keysmith 稿，本文件成 `dsh-gen4` 载荷）
 const CANON_PATH = join(ROOT, "prompts", "infinite-gen-4.md");
-// 插件内所有承载注入文本的文件（Order 100 生效槽位 / Order 200 保留槽位），必须逐字同源。
+// 插件内所有承载「双段自持」文本的文件（dsh-gen4 的 order 100 / order 200 两个槽位同源），必须逐字同源。
 // infinite-gen-3.md 是历史留存文本，index.js 已不再引用，故不纳入注入面断言（见第 4 节反向断言）。
 const INJECTED_PROMPT_FILES = [
   "infinite-gen-4.md",
@@ -51,9 +52,10 @@ function mustAbsent(text, needle, label) {
 }
 const sha256 = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
 
-// ---- 1. 注入载荷契约与身份完整性（当前载荷 = 工作区指令外壳 + 分域输出契约） ----
+// ---- 1. 备用自持载荷（dsh-gen4）契约与身份完整性（工作区指令外壳 + 分域输出契约） ----
+// 0.7.0 起本文件不再默认注入，但仍是可手动切换的备用档，完整性照旧锁死。
 const prompt = existsSync(CANON_PATH) ? readFileSync(CANON_PATH, "utf8") : "";
-check(prompt.length > 0, "注入载荷 prompt 文件存在且非空");
+check(prompt.length > 0, "备用自持载荷 prompt 文件存在且非空");
 // 外壳：载荷以「工作区指令块」形态注入
 mustContain(prompt, "<system-reminder>", "外壳: system-reminder 起始");
 mustContain(prompt, "</system-reminder>", "外壳: system-reminder 结束");
@@ -94,17 +96,17 @@ for (const ph of [
 mustContain(prompt, "ROLE_A", "锚点: ROLE_A");
 mustContain(prompt, "ROLE_B", "锚点: ROLE_B");
 
-// ---- 2. 注入载荷同源一致性（Order 100 与 Order 200 同时生效；同源是双段注入的前提） ----
+// ---- 2. 双段自持载荷同源一致性（dsh-gen4 的 order 100 与 order 200；同源是双段注入的前提） ----
 const canonHash = sha256(CANON_PATH);
 for (const file of INJECTED_PROMPT_FILES) {
   const p = join(ROOT, "prompts", file);
   if (!existsSync(p)) {
-    check(false, `注入面文件存在: prompts/${file}`);
+    check(false, `双段自持文件存在: prompts/${file}`);
     continue;
   }
   check(
     sha256(p) === canonHash,
-    `注入载荷同源逐字一致: prompts/${file}`,
+    `双段自持载荷同源逐字一致: prompts/${file}`,
     "SHA256 与 infinite-gen-4.md 不一致",
   );
 }
@@ -146,8 +148,10 @@ for (const file of BRAND_CLEAN_FILES) {
 const indexSrc = existsSync(INDEX_PATH) ? readFileSync(INDEX_PATH, "utf8") : "";
 check(indexSrc.length > 0, "index.js 存在且非空");
 mustContain(indexSrc, 'export const name = "dsh-infinite-gen-4"', "插件名 dsh-infinite-gen-4");
-mustContain(indexSrc, '"./prompts/infinite-gen-4.md"', "载入 Order 100 生效载荷");
-mustContain(indexSrc, '"./prompts/infinite-gen-4.1-flash.md"', "保留 Order 200 载荷文件（同源备用）");
+mustContain(indexSrc, '"./prompts/dsh-unrestricted.md"', "载入自持档 dsh 载荷（Keysmith 短稿）");
+mustContain(indexSrc, '"./prompts/infinite-gen-4.md"', "载入备用自持档 dsh-gen4 载荷");
+mustContain(indexSrc, '"./prompts/claude-keysmith.md"', "载入 Claude 载荷");
+mustContain(indexSrc, '"./prompts/grok-keysmith.md"', "载入 Grok 载荷");
 mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "系统提示词 Order 100 注入槽位");
 mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词 Order 200 槽位代码保留");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "保留双段注入开关");
@@ -169,28 +173,42 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.6.0"', "内核版本 0.6.0");
+mustContain(indexSrc, 'pluginVersion: "0.7.0"', "内核版本 0.7.0");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
 
-// ---- 4b. 按模型分流注入载荷（GPT 系走 Codex 载荷） ----
-// 三份外部载荷：原样引入、互不同源，不参与 INJECTED_PROMPT_FILES 的逐字同源约束
-const GPT_PAYLOAD_FILES = [
-  ["prompts/gpt-6.1-sol.md", "37382fb7082652e5b18c99fa5086fbc6d414993eaeae2ec7852ba372b031acac"],
-  ["prompts/gpt-6-astra.md", "d6976b90b399b9e11df9430dd3663072288f1d858a4910b1e9d5109b3ae7e660"],
-  ["prompts/gpt-5.6-sol.md", "c71c50e2f7a303b5eebc2b24c0b1ca0d9c753e3240db05c3e472c679907898f7"],
+// ---- 4b. 按模型分流注入载荷（自持 / Codex 三档 / Claude / Grok） ----
+// 外部载荷：原样引入、互不同源，不参与 INJECTED_PROMPT_FILES 的逐字同源约束。
+// GPT 三份来自 MDX-Tom/gpt-instruct；Claude 与 Grok 两份来自 Jia-Ethan 的 Keysmith 系列（均 MIT）。
+const EXTERNAL_PAYLOAD_FILES = [
+  ["prompts/gpt-6.1-sol.md", "37382fb7082652e5b18c99fa5086fbc6d414993eaeae2ec7852ba372b031acac", "GPT"],
+  ["prompts/gpt-6-astra.md", "d6976b90b399b9e11df9430dd3663072288f1d858a4910b1e9d5109b3ae7e660", "GPT"],
+  ["prompts/gpt-5.6-sol.md", "c71c50e2f7a303b5eebc2b24c0b1ca0d9c753e3240db05c3e472c679907898f7", "GPT"],
+  ["prompts/dsh-unrestricted.md", "6b6e145b696d5a7edd05452c561d514d2b4fbb60c319a1af85c394e39032e78f", "Keysmith dsh"],
+  ["prompts/claude-keysmith.md", "2792d33890ed06948eecfc4eb8371db6b6aa5e8111b1623424100e077bcb32ca", "Keysmith claude"],
+  ["prompts/grok-keysmith.md", "3c669118d67690856f3ac11cd0f2beb687aa6e718dc76ed3f54c0751e01e48c9", "Keysmith grok"],
 ];
-for (const [rel, want] of GPT_PAYLOAD_FILES) {
+for (const [rel, want, tag] of EXTERNAL_PAYLOAD_FILES) {
   const abs = join(ROOT, rel);
-  check(existsSync(abs), `GPT 载荷文件存在 ${rel}`);
+  check(existsSync(abs), `${tag} 载荷文件存在 ${rel}`);
   if (existsSync(abs)) {
     const raw = readFileSync(abs, "utf8");
     const got = createHash("sha256").update(readFileSync(abs)).digest("hex");
-    check(got === want, `GPT 载荷逐字未被改动 ${rel}`, got === want ? "" : `${got} != ${want}`);
+    check(got === want, `${tag} 载荷逐字未被改动 ${rel}`, got === want ? "" : `${got} != ${want}`);
     // 引擎安全：`{{` 会被 renderPrompt 当变量引用（非内置变量已转义，载荷应保持 0 处）
-    check((raw.match(/\{\{/g) ?? []).length === 0, `GPT 载荷无 {{ 混淆风险 ${rel}`);
+    check((raw.match(/\{\{/g) ?? []).length === 0, `${tag} 载荷无 {{ 混淆风险 ${rel}`);
   }
+}
+// 三份新载荷的首行/特征锚点（防误替换成别的文件）
+{
+  const readOr = (rel) => (existsSync(join(ROOT, rel)) ? readFileSync(join(ROOT, rel), "utf8") : "");
+  mustContain(readOr("prompts/dsh-unrestricted.md"),
+    "You are a senior engineer and writer with twenty years in the field.",
+    "Keysmith dsh 载荷首句锚点");
+  mustContain(readOr("prompts/claude-keysmith.md"), "# Project rules", "Keysmith claude 载荷首行锚点");
+  mustContain(readOr("prompts/grok-keysmith.md"), "<|im_start|>system", "Keysmith grok 载荷起始锚点");
+  mustContain(readOr("prompts/grok-keysmith.md"), "<|im_end|>", "Keysmith grok 载荷结束锚点");
 }
 mustContain(indexSrc, "gpt-6.1-sol.md", "index.js 引用 6.1 Sol 载荷");
 mustContain(indexSrc, "gpt-6-astra.md", "index.js 引用 Astra 载荷");
@@ -245,9 +263,32 @@ mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload }
 mustContain(indexSrc, "expected { mode:", "配置: 非法 mode 仍 400");
 mustContain(indexSrc, "expected { manualPayload:", "配置: 非法 manualPayload 仍 400");
 mustContain(indexSrc, 'typeof body.enabled !== "boolean"', "配置: enabled 类型校验保留");
-// 取不到模型时必须回落 DSH 载荷，绝不返回空串（空串是「关掉」的语义）
+// 取不到模型时必须回落自持档，绝不返回空串（空串是「关掉」的语义）
 mustContain(indexSrc, 'return "dsh";', "载荷分流: 未知模型回落 dsh");
-mustContain(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT", "载荷分流: 文本缺失回落 DSH 自持");
+// 回落改为「按 id 各自回落」（0.7.0）：旧实现硬绑 PROMPT_TEXT 会让 claude 文件缺失时静默注入自持稿
+mustContain(indexSrc, "PAYLOAD_FALLBACKS", "载荷分流: 按 id 的回落表");
+mustContain(indexSrc, "fallbackId", "载荷分流: 文本缺失按 id 回落（不再一律落回旧自持稿）");
+mustAbsent(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT",
+  "载荷分流: 已废弃「一律回落 PROMPT_TEXT」的旧写法");
+// 双段只留给自持族：外部稿恒单段
+mustContain(indexSrc, "NATIVE_PAYLOAD_IDS", "双段口径: 自持族白名单");
+mustContain(indexSrc, '["dsh", "dsh-gen4"]', "双段口径: 自持族恰为 dsh 与 dsh-gen4");
+mustContain(indexSrc, 'if (!NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context))) return ""',
+  "双段口径: order 200 只对自持族非空");
+mustContain(indexSrc, '"dsh-gen4": { label:', "载荷表: 备用自持档 dsh-gen4 在表内");
+mustContain(indexSrc, "claude: { label:", "载荷表: claude 在表内");
+mustContain(indexSrc, "grok: { label:", "载荷表: grok 在表内");
+check(indexSrc.includes('const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"]'),
+  "载荷表: 白名单恰为 7 项");
+// 家族锚定分支：claude / grok 必须在「非 GPT 家族 → dsh」兜底之前
+{
+  const iClaude = indexSrc.indexOf("if (/^claude/.test(id)) return \"claude\"");
+  const iGrok = indexSrc.indexOf("if (/^grok/.test(id)) return \"grok\"");
+  const iGptFallback = indexSrc.indexOf("if (!isGptFamily(id)) return \"dsh\"");
+  check(iClaude > 0 && iGrok > iClaude && iGptFallback > iGrok,
+    "载荷分流: claude / grok 锚定分支位于 GPT 家族兜底之前",
+    `位置 claude ${iClaude} / grok ${iGrok} / 兜底 ${iGptFallback}`);
+}
 // 离线探针钩子
 mustContain(indexSrc, "__testMatchPayloadId", "探针钩子: 导出 matchPayloadId");
 mustContain(indexSrc, "__testGatedReinforce", "探针钩子: 导出 order 200 求值器");
@@ -300,9 +341,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-infinite-gen-4", "package.json name = dsh-infinite-gen-4");
-check(pkg.version === "0.6.0", "package.json version = 0.6.0");
+check(pkg.version === "0.7.0", "package.json version = 0.7.0");
 check(pkg.dsh?.id === "dsh-infinite-gen-4", "dsh.id = dsh-infinite-gen-4");
-check(pkg.dsh?.version === "0.6.0", "dsh.version = 0.6.0");
+check(pkg.dsh?.version === "0.7.0", "dsh.version = 0.7.0");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 6. 客户端状态条版本 ----

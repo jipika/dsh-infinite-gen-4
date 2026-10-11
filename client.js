@@ -469,7 +469,7 @@
             react.createElement(
               "div",
               { className: "dsh-armor-s-desc" },
-              "自动 = 按当前模型身份选载荷（GPT 系走 Codex 载荷，其余走无限四代自持载荷）；手动 = 固定使用指定的那一份。"
+              "自动 = 按当前模型身份选载荷（GPT 系走 Codex 三档，Claude / Grok 各走对应稿，DeepSeek · GLM 等其余走 dsh 档）；手动 = 固定使用指定的那一份。想用旧版无限四代自持契约稿，选 dsh-gen4。"
             ),
             react.createElement(
               "div",
@@ -514,7 +514,7 @@
               { className: "dsh-armor-s-note" },
               snap.mode === "auto"
                 ? "自动模式：载荷随模型实时切换，无需手动干预。"
-                : "手动模式：所有模型都使用 " + snap.manualPayload + "（GPT 系载荷只注入单段）。"
+                : "手动模式：所有模型都使用 " + snap.manualPayload + "（仅自持档 dsh / dsh-gen4 双段，其余单一整份只注入单段）。"
             )
           );
         }
