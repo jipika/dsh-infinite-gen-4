@@ -152,8 +152,17 @@ mustContain(indexSrc, '"./prompts/dsh-unrestricted.md"', "载入自持档 dsh �
 mustContain(indexSrc, '"./prompts/infinite-gen-4.md"', "载入备用自持档 dsh-gen4 载荷");
 mustContain(indexSrc, '"./prompts/claude-keysmith.md"', "载入 Claude 载荷");
 mustContain(indexSrc, '"./prompts/grok-keysmith.md"', "载入 Grok 载荷");
-mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "系统提示词 Order 100 注入槽位");
-mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词 Order 200 槽位代码保留");
+mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "系统提示词主槽位注册");
+mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词镜像槽位代码保留");
+// 段位必须落在 persona(0) 与 dsh-memory(1) 之间的夹缝：这是 0.7.1 的核心修复，
+// 把载荷从 order 100（排在 19.5k 记忆索引之后）提到 persona 之后、记忆之前。
+mustContain(indexSrc, "const PRIMARY_SECTION_ORDER = 0.1", "段位: 主槽位 order = 0.1（persona 之后、记忆之前）");
+mustContain(indexSrc, "const REINFORCE_SECTION_ORDER = 0.2", "段位: 镜像槽位 order = 0.2");
+check(!/order:\s*100\b/.test(indexSrc), "段位: 已无 order 100 残留（回归锁）");
+check(!/order:\s*200\b/.test(indexSrc), "段位: 已无 order 200 残留（回归锁）");
+mustContain(indexSrc, "order: PRIMARY_SECTION_ORDER", "段位: 主槽位注册引用常量");
+mustContain(indexSrc, "order: REINFORCE_SECTION_ORDER", "段位: 镜像槽位注册引用常量");
+mustContain(indexSrc, "dsh-memory:long-term", "段位: 注释里写明相邻占位（dsh-memory order 1）");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "保留双段注入开关");
 check(indexSrc.includes("const DUAL_LAYER_INJECTION = true"), "双段注入：DUAL_LAYER_INJECTION 已置 true");
 mustAbsent(indexSrc, "infinite-gen-3.md", "历史载荷未回流注入面（index.js 不引用 gen-3）");
@@ -173,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.7.0"', "内核版本 0.7.0");
+mustContain(indexSrc, 'pluginVersion: "0.7.1"', "内核版本 0.7.1");
 mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -341,9 +350,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-infinite-gen-4", "package.json name = dsh-infinite-gen-4");
-check(pkg.version === "0.7.0", "package.json version = 0.7.0");
+check(pkg.version === "0.7.1", "package.json version = 0.7.1");
 check(pkg.dsh?.id === "dsh-infinite-gen-4", "dsh.id = dsh-infinite-gen-4");
-check(pkg.dsh?.version === "0.7.0", "dsh.version = 0.7.0");
+check(pkg.dsh?.version === "0.7.1", "dsh.version = 0.7.1");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 6. 客户端状态条版本 ----

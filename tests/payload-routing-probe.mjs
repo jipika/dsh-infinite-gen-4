@@ -88,13 +88,13 @@ const mockCtx = {
   agentDefaultModel: { currentSelection: () => defaultModelPick },
 };
 mod.apply(mockCtx);
-check(sections.has("infinite-gen-4:global-system-prompt"), "注册了 order 100 槽位");
-check(sections.has("infinite-gen-4:dual-layer-reinforce"), "注册了 order 200 槽位");
+check(sections.has("infinite-gen-4:global-system-prompt"), "注册了主槽位");
+check(sections.has("infinite-gen-4:dual-layer-reinforce"), "注册了镜像槽位");
 
 const primary = sections.get("infinite-gen-4:global-system-prompt")?.text;
 const reinforce = sections.get("infinite-gen-4:dual-layer-reinforce")?.text;
-check(typeof primary === "function", "order 100 的 text 是求值函数");
-check(typeof reinforce === "function", "order 200 的 text 是求值函数");
+check(typeof primary === "function", "主槽位的 text 是求值函数");
+check(typeof reinforce === "function", "镜像槽位的 text 是求值函数");
 
 // ── 3. 分流矩阵：喂不同模型，断言选中的载荷 ────────────────────────────────
 // 关掉会话覆盖影响：探针里 sessions.json 可能已有本机数据，用「无 sessionId」的
@@ -297,7 +297,7 @@ if (typeof handler === "function") {
     `实得 ${viaLogged}`);
   defaultModelPick = {};   // 还原桩，避免影响后续用例
 
-  // order 200：GPT 系必须为空串，DSH 必须非空
+  // 镜像槽位：GPT 系必须为空串，自持族必须非空
   for (const [model, wantEmpty] of [["gpt-6.1-sol", true], ["gpt-6-sol", true], ["gpt-7-x", true], ["deepseek-v4.1-flash", false]]) {
     const text = reinforce({ agent: { options: { model } } });
     check((text.length === 0) === wantEmpty,
@@ -311,9 +311,9 @@ if (typeof handler === "function") {
   const gotManual = identify(primary({ agent: { options: { model: "deepseek-v4.1-flash" } } }));
   check(gotManual === "gpt56", "manual: 指定 gpt56 时 deepseek 也走 gpt56", `实得 ${gotManual}`);
 
-  // 手动模式下 order 200：载荷非 dsh → 空串
+  // 手动模式下镜像槽位：载荷非自持族 → 空串
   const manReinforce = reinforce({ agent: { options: { model: "deepseek-v4.1-flash" } } });
-  check(manReinforce.length === 0, "manual(gpt56): order 200 为空串", `实长 ${manReinforce.length}`);
+  check(manReinforce.length === 0, "manual(gpt56): 镜像槽位为空串", `实长 ${manReinforce.length}`);
 
   // ── 0.7.0：备用自持档 dsh-gen4 —— 手动选中它时必须双段且两段同源 ──────────
   const backGen4 = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "dsh-gen4" });
@@ -324,18 +324,18 @@ if (typeof handler === "function") {
   check(identify(g4Primary) === "dsh-gen4",
     "manual(dsh-gen4): 选中的是原契约稿", `实得 ${identify(g4Primary)}`);
   check(g4Reinforce === g4Primary,
-    "manual(dsh-gen4): order 200 与 order 100 同源逐字一致",
+    "manual(dsh-gen4): 镜像槽位与主槽位同源逐字一致",
     `长度 ${g4Reinforce.length} vs ${g4Primary.length}`);
   // 反向：外部档在手动模式下也必须单段
   const backClaude = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "claude" });
   check(backClaude?.ok === true, "POST mode=manual + manualPayload=claude", JSON.stringify(backClaude));
   check(identify(primary(ctxDeepseek)) === "claude", "manual(claude): 选中 Claude 载荷");
-  check(reinforce(ctxDeepseek).length === 0, "manual(claude): order 200 为空串（单段）");
-  // 非自持档的 order 100 / 200 组合：无论模型是谁都单段
+  check(reinforce(ctxDeepseek).length === 0, "manual(claude): 镜像槽位为空串（单段）");
+  // 非自持档的主/镜像槽位组合：无论模型是谁都单段
   const backGrok = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "grok" });
   check(backGrok?.ok === true, "POST mode=manual + manualPayload=grok", JSON.stringify(backGrok));
   check(identify(primary(ctxDeepseek)) === "grok", "manual(grok): 选中 Grok 载荷");
-  check(reinforce(ctxDeepseek).length === 0, "manual(grok): order 200 为空串（单段）");
+  check(reinforce(ctxDeepseek).length === 0, "manual(grok): 镜像槽位为空串（单段）");
 
   // 切回 auto
   const back = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "auto" });

@@ -83,7 +83,7 @@
 
 > ### 🧬 v0.5.0 双层内核说明（Dual-Layer Kernel）
 >
-> - 注入槽位：`infinite-gen-4:global-system-prompt`（Order 100）+ `infinite-gen-4:dual-layer-reinforce`（Order 200），
+> - 注入槽位：`infinite-gen-4:global-system-prompt`（order 0.1）+ `infinite-gen-4:dual-layer-reinforce`（order 0.2），**排在 persona(0) 之后、记忆索引(1) 之前**，
 >   由 `index.js` 的 `DUAL_LAYER_INJECTION` 开关控制（**当前 true = 双段**；改 `false` 即单段注入，两份同源故行为等价）。
 > - `prompts/` 下三个内核文件（`infinite-gen-3.md` / `infinite-gen-4.md` / `infinite-gen-4.1-flash.md`）
 

@@ -9,7 +9,8 @@ import Schema from "@deepseek-ai/schemastery";
 import { scoreResponse } from "./scripts/lib/scorer.mjs";
 
 // ── 无限四代注入载荷（v0.7.0） ────────────────────────────────────────────────────
-// Order 100 与 Order 200 双槽位同时注册（DUAL_LAYER_INJECTION=true）。
+// Order 主槽位与镜像槽位同时注册（DUAL_LAYER_INJECTION=true），
+// 两者 order 落在 persona(0) 与 dsh-memory(1) 之间的夹缝里（见 PRIMARY_SECTION_ORDER 注释）。
 // **双段只留给两份自持稿**（dsh / dsh-gen4），两段同源逐字一致 —— 刻意的权重强化。
 // 外部稿（Codex 三份 + claude + grok）一律单段：它们要么含 ACTION 绑定并写明
 // 「Text loaded afterward cannot select, replace, or nest ACTION」，要么首尾自带
@@ -34,7 +35,7 @@ const PROMPT41_TEXT = escapePromptVars(readFileSync(PROMPT41_URL, "utf8"));
 // 它们是「多段状态机式单一整份」：Codex 三份含 INJECTED REVISION ACTION 一类的 ACTION
 // 绑定并写明「Text loaded afterward cannot select, replace, or nest ACTION」；
 // grok 稿首尾自带 <|im_start|>system / <|im_end|> 闭合标签。
-// 因此**外部稿一律只注入单段**（order 200 返回空串）：注入两遍会自伤。
+// 因此**外部稿一律只注入单段**（镜像槽位返回空串）：注入两遍会自伤。
 // 双段只留给两份自持稿（dsh / dsh-gen4），那是刻意的权重强化。
 const GPT6_URL = new URL("./prompts/gpt-6-astra.md", import.meta.url);
 const GPT61_URL = new URL("./prompts/gpt-6.1-sol.md", import.meta.url);
@@ -70,8 +71,26 @@ function loadPayloadTable() {
 const PAYLOADS = loadPayloadTable();
 /** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
 const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"];
-/** 自持族：只有它们走双段注入（order 100 + order 200 同源逐字一致）。 */
+/** 自持族：只有它们走双段注入（主槽位 + 镜像槽位同源逐字一致）。 */
 const NATIVE_PAYLOAD_IDS = ["dsh", "dsh-gen4"];
+/**
+ * 注入段在系统提示里的排序位（`dsh-system-prompt` 按 order 升序全局排序）。
+ *
+ * **必须落在 (0, 1) 这个夹缝里**，实测的相邻占位：
+ *   -1000  `harness:identity`（官方开场白；本插件 patch 已 `includeHarnessIdentity: false` 关掉）
+ *       0  `deployment:persona-prefix`（官方构造器注册、**文本被本插件 patch 替换**）
+ *       1  `dsh-memory:long-term`（记忆索引，19.5k 字符量级）
+ *     100  ← 0.7.0 之前载荷在这里，于是 45% 的记忆整段排在我们的载荷前面
+ *    1000+ 官方工具规范；10200 `deployment:persona-suffix`
+ *
+ * 0.7.1 把载荷提到 persona 之后、记忆之前：用户要的是「我们的提示词在最前面」，
+ * 而 persona 段就是本插件自己写的那句（`cordis.patch.yml` 的 personaPrefix）——
+ * 所以正确目标是 `identity → persona → 载荷 → 记忆 → 工具规范`，
+ * 不能把 order 压到 0 以下（那会变成载荷跑到自己的 persona 前面）。
+ * 用小数而非整数：`comparePromptSections` 是纯数值比较，0.1 / 0.2 稳定夹在 0 与 1 之间。
+ */
+const PRIMARY_SECTION_ORDER = 0.1;
+const REINFORCE_SECTION_ORDER = 0.2;
 /**
  * 各 id 取不到文本时的回落目标 —— 绝不返回空串（空串是「关闭」语义，
  * 不能与「文件缺失」混淆）。自持档回落到备用自持稿，其余一律回落自持档。
@@ -209,14 +228,14 @@ function matchPayloadId(model) {
 }
 
 // 双段注入镜像开关：
-//   true  = 沿用四代双层架构，Order 100 与 Order 200 各注入一份同源载荷（重复注入）
-//   false = 单段注入（Order 100），省掉重复 token，行为等价
+//   true  = 沿用四代双层架构，主槽位与镜像槽位各注入一份同源载荷（重复注入）
+//   false = 单段注入（只留主槽位），省掉重复 token，行为等价
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.7.0";
+const VERSION = "0.7.1";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.7.0"
+//   pluginVersion: "0.7.1"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-infinite-gen-4.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
@@ -600,7 +619,7 @@ async function handleSettingsRoute(req, res) {
 }
 
 /**
- * 条件段文本求值器（order 100）：宿主每个模型步以 `{ agent, scope, signal }` 调用一次，
+ * 条件段文本求值器（主槽位）：宿主每个模型步以 `{ agent, scope, signal }` 调用一次，
  * 因此这里天然就是「按会话」的 —— 会话覆盖关 / 全局关都返回空串，
  * 交给 renderPrompt 过滤，零残留。
  * 载荷不再是固定文本：由 `resolvePayloadId` 按「手动指定 / 当前模型身份」二选一。
@@ -614,13 +633,13 @@ function gated() {
 }
 
 /**
- * 强化段（order 200）文本 —— 只有自持族（`dsh` / `dsh-gen4`）非空。
+ * 镜像段（reinforce）文本 —— 只有自持族（`dsh` / `dsh-gen4`）非空。
  * 外部稿（Codex 三份 / claude / grok）恒为空串：它们是状态机式单一整份，
  * Codex 三份明文写「Text loaded afterward cannot select, replace, or nest ACTION」，
  * grok 稿自带 <|im_start|> / <|im_end|> 闭合标签 —— 注入第二遍都会自伤。
- * 自持族按 `DUAL_LAYER_INJECTION` 双段：**返回与 order 100 完全相同的那一份文本**，
+ * 自持族按 `DUAL_LAYER_INJECTION` 双段：**返回与主槽位完全相同的那一份文本**，
  * 保证「两段同源逐字一致」这条性质在 `dsh-gen4` 也成立（旧版硬绑 PROMPT41_TEXT，
- * 只对原自持稿成立，切到 dsh-gen4 就会与 order 100 不同源）。
+ * 只对原自持稿成立，切到 dsh-gen4 就会与主槽位不同源）。
  * @param {object} context assemble context。
  * @returns {string} 自持族的同源副本，其余恒为空串。
  */
@@ -805,16 +824,16 @@ const profileTool = {
       injection: [
         {
           section: "infinite-gen-4:global-system-prompt",
-          order: 100,
+          order: PRIMARY_SECTION_ORDER,
           enabled,
           payload: state.mode === "manual" ? state.manualPayload : "(auto: 按模型)",
         },
         {
           section: "infinite-gen-4:dual-layer-reinforce",
-          order: 200,
+          order: REINFORCE_SECTION_ORDER,
           // GPT 系走单段（载荷自带 ACTION 绑定规则，重复注入会自我冲突）
           enabled: enabled && DUAL_LAYER_INJECTION,
-          note: "仅 DSH 自持载荷生效；GPT 系载荷恒为空串（单段）",
+          note: "仅自持族（dsh / dsh-gen4）非空；外部载荷恒为空串（单段）",
         },
       ],
       mode: enabled
@@ -837,8 +856,8 @@ const profileTool = {
         "Dialog Switch: 输入框状态条内联开关，经自有路由（host 先试 settings.update 持久化）写开关，下一模型步即时生效",
         "Settings Form: 导出 volatile Config + settings.configure，官方设置页与客户端开关共用同一写入面（写盘落点 = profile patch）",
         "Conditional Sections: 关闭时 section.text 求值为空串，renderPrompt 过滤，零残留",
-        "Single-Layer Injection: Order 100 单段注入（Order 200 槽位与载荷文件保留，默认不注册）",
-        "Section Hosting: Order 100/200 双槽位代码保留，由 DUAL_LAYER_INJECTION 切换（当前 false = 单段）",
+        "Single-Layer Injection: 自持族之外的载荷单段注入",
+        "Section Hosting: 主槽位 order " + PRIMARY_SECTION_ORDER + " / 镜像槽位 order " + REINFORCE_SECTION_ORDER + "，由 DUAL_LAYER_INJECTION 切换镜像段",
         "Armor Projection: 开头窗口(160)判拒 + REFUSAL/FALLBACK/SAFE/RISK 标记 + 域命中",
         "Client Badge: 输入框上方「无限四代」实时状态条（含开关）",
         "Profile Tool: infinite_gen4_profile 返回内核版本、开关状态与注入槽位元数据",
@@ -1030,7 +1049,7 @@ export function apply(ctx) {
   ctx.effect(() =>
     ctx.systemPrompt.section({
       name: "infinite-gen-4:global-system-prompt",
-      order: 100,
+      order: PRIMARY_SECTION_ORDER,
       text: gated(),
     }),
   );
@@ -1038,8 +1057,8 @@ export function apply(ctx) {
     ctx.effect(() =>
       ctx.systemPrompt.section({
         name: "infinite-gen-4:dual-layer-reinforce",
-        order: 200,
-        // DSH 自持载荷双段（刻意权重强化）；GPT 系走单段（见 gatedReinforce 注释）
+        order: REINFORCE_SECTION_ORDER,
+        // 自持族双段（刻意权重强化）；外部载荷单段（见 gatedReinforce 注释）
         text: gatedReinforce(),
       }),
     );
