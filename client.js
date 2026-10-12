@@ -554,14 +554,14 @@
           var showVerdict = enabled && !running && lastVerdictRef.current !== null &&
             Date.now() < flashUntilRef.current;
 
-          var text = "Switch Armor v" + VERSION;
+          var text = "正常";
           var phase = "idle";
           // 状态条视觉不变，作用域只在 tooltip 里区分（本会话 / 全局）
           var scopeLabel = sessionId !== void 0 ? "本会话" : "全局";
 
           if (!enabled) {
             phase = "off";
-            text = "Switch Armor 已关闭";
+            text = "已关闭";
           } else if (running) {
             phase = "running";
             text = "执行中…";

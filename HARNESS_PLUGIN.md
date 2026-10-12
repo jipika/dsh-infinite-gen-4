@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.0)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.1)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -143,7 +143,8 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | **v0.6.0** | 按模型分流注入载荷：GPT 系走三份 Codex 载荷（**按 model 名的版本号语义解析**，容忍各种写法，单段注入），其余走 DSH 自持载荷（双段）；新增 `mode`(auto/manual) + `manualPayload` 配置与设置页 tab |
 | **v0.7.0** | 融入 Keysmith 系列载荷：自持档 `dsh` 换成 keysmith 短稿，原 7739B 契约稿降为可切换的备用档 `dsh-gen4`；新增 `claude`（`^claude`）与 `grok`（`^grok`）两条家族锚定分支；载荷表 4 → 7 项；**双段收紧为仅自持族**，镜像槽位改为跟随主槽位的同一份文本；文本缺失改为**按 id 回落**（`PAYLOAD_FALLBACKS`） |
 | v0.7.1 | **段位前移**：载荷 order 由 100/200 改为 **0.1/0.2**，从「排在 19.5k 记忆索引之后」提到 `persona(0)` 之后、`dsh-memory(1)` 之前 |
-| **v0.8.0** | **项目定名 Switch Armor**；载荷分流 7 份；段位 order 0.1/0.2；文档全面重写 |
+| v0.8.0 | **项目定名 Switch Armor**；载荷分流 7 份；段位 order 0.1/0.2；文档全面重写 |
+| **v0.8.1** | 新增项目 banner（随包发布） |
 
 ## Local verification
 
