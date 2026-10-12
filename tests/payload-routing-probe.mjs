@@ -4,7 +4,7 @@
 // 手法沿用 tests/armor-dock-probe.mjs：ESM 只从被 import 文件所在目录向上找 node_modules，
 // 所以在临时目录里 ln -s 出 @deepseek-ai/{schemastery,cosmokit} 再 import index.js。
 // index.js 是 host 半边：顶层只 readFileSync + 定义函数，apply(ctx) 需要 mock ctx。
-import { mkdirSync, symlinkSync, existsSync, readFileSync } from "node:fs";
+import { mkdirSync, symlinkSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -12,21 +12,22 @@ import { tmpdir } from "node:os";
 const PLUGIN_ROOT = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const PROFILE_NM = "/Users/lixiongwei/.dsh/profiles/desktop/node_modules/@deepseek-ai";
 
-const work = join(tmpdir(), "dsh-gen4-payload-probe");
+const work = join(tmpdir(), "dsh-switch-armor-payload-probe");
+// 清掉可能残留的旧链接：插件目录改名后，旧 symlink 会指向不存在的路径，
+// 而 `if (!existsSync(...))` 不会重建它 —— 表现为后续 import 全部失败。
+rmSync(work, { recursive: true, force: true });
 mkdirSync(join(work, "node_modules", "@deepseek-ai"), { recursive: true });
 for (const dep of ["schemastery", "cosmokit"]) {
   const target = join(work, "node_modules", "@deepseek-ai", dep);
-  if (!existsSync(target)) {
-    try {
-      symlinkSync(join(PROFILE_NM, dep), target, "dir");
-    } catch (error) {
-      console.error(`依赖链接失败 ${dep}:`, error.message);
-      process.exit(2);
-    }
+  try {
+    symlinkSync(join(PROFILE_NM, dep), target, "dir");
+  } catch (error) {
+    console.error(`依赖链接失败 ${dep}:`, error.message);
+    process.exit(2);
   }
 }
 const pluginLink = join(work, "plugin");
-if (!existsSync(pluginLink)) symlinkSync(PLUGIN_ROOT, pluginLink, "dir");
+symlinkSync(PLUGIN_ROOT, pluginLink, "dir");
 
 const mod = await import(join(pluginLink, "index.js"));
 
@@ -88,11 +89,11 @@ const mockCtx = {
   agentDefaultModel: { currentSelection: () => defaultModelPick },
 };
 mod.apply(mockCtx);
-check(sections.has("infinite-gen-4:global-system-prompt"), "注册了主槽位");
-check(sections.has("infinite-gen-4:dual-layer-reinforce"), "注册了镜像槽位");
+check(sections.has("switch-armor:global-system-prompt"), "注册了主槽位");
+check(sections.has("switch-armor:dual-layer-reinforce"), "注册了镜像槽位");
 
-const primary = sections.get("infinite-gen-4:global-system-prompt")?.text;
-const reinforce = sections.get("infinite-gen-4:dual-layer-reinforce")?.text;
+const primary = sections.get("switch-armor:global-system-prompt")?.text;
+const reinforce = sections.get("switch-armor:dual-layer-reinforce")?.text;
 check(typeof primary === "function", "主槽位的 text 是求值函数");
 check(typeof reinforce === "function", "镜像槽位的 text 是求值函数");
 
@@ -139,7 +140,7 @@ if (typeof handler === "function") {
     const req = {
       method,
       url: path,
-      headers: { "x-dsh-infinite-gen-4": "1", ...headers },
+      headers: { "x-dsh-switch-armor": "1", ...headers },
       on: (ev, cb) => {
         if (ev === "data" && body !== undefined) cb(Buffer.from(JSON.stringify(body)));
         if (ev === "end") cb();
@@ -157,7 +158,7 @@ if (typeof handler === "function") {
   };
 
   // 打开全局开关（enabled=true）
-  const on = await call("POST", "/dsh-infinite-gen-4/settings", { enabled: true });
+  const on = await call("POST", "/dsh-switch-armor/settings", { enabled: true });
   check(on?.ok === true && on?.enabled === true, "POST /settings 打开总开关", JSON.stringify(on));
 
   const CASES = [
@@ -306,7 +307,7 @@ if (typeof handler === "function") {
   }
 
   // 手动模式：指定 gpt56，模型是 deepseek 也要走 gpt56
-  const manual = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "gpt56" });
+  const manual = await call("POST", "/dsh-switch-armor/settings", { mode: "manual", manualPayload: "gpt56" });
   check(manual?.ok === true && manual?.mode === "manual", "POST mode=manual", JSON.stringify(manual));
   const gotManual = identify(primary({ agent: { options: { model: "deepseek-v4.1-flash" } } }));
   check(gotManual === "gpt56", "manual: 指定 gpt56 时 deepseek 也走 gpt56", `实得 ${gotManual}`);
@@ -316,7 +317,7 @@ if (typeof handler === "function") {
   check(manReinforce.length === 0, "manual(gpt56): 镜像槽位为空串", `实长 ${manReinforce.length}`);
 
   // ── 0.7.0：备用自持档 dsh-gen4 —— 手动选中它时必须双段且两段同源 ──────────
-  const backGen4 = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "dsh-gen4" });
+  const backGen4 = await call("POST", "/dsh-switch-armor/settings", { mode: "manual", manualPayload: "dsh-gen4" });
   check(backGen4?.ok === true, "POST mode=manual + manualPayload=dsh-gen4", JSON.stringify(backGen4));
   const ctxDeepseek = { agent: { options: { model: "deepseek-v4.1-flash", provider: "deepseek" } } };
   const g4Primary = primary(ctxDeepseek);
@@ -327,34 +328,34 @@ if (typeof handler === "function") {
     "manual(dsh-gen4): 镜像槽位与主槽位同源逐字一致",
     `长度 ${g4Reinforce.length} vs ${g4Primary.length}`);
   // 反向：外部档在手动模式下也必须单段
-  const backClaude = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "claude" });
+  const backClaude = await call("POST", "/dsh-switch-armor/settings", { mode: "manual", manualPayload: "claude" });
   check(backClaude?.ok === true, "POST mode=manual + manualPayload=claude", JSON.stringify(backClaude));
   check(identify(primary(ctxDeepseek)) === "claude", "manual(claude): 选中 Claude 载荷");
   check(reinforce(ctxDeepseek).length === 0, "manual(claude): 镜像槽位为空串（单段）");
   // 非自持档的主/镜像槽位组合：无论模型是谁都单段
-  const backGrok = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "manual", manualPayload: "grok" });
+  const backGrok = await call("POST", "/dsh-switch-armor/settings", { mode: "manual", manualPayload: "grok" });
   check(backGrok?.ok === true, "POST mode=manual + manualPayload=grok", JSON.stringify(backGrok));
   check(identify(primary(ctxDeepseek)) === "grok", "manual(grok): 选中 Grok 载荷");
   check(reinforce(ctxDeepseek).length === 0, "manual(grok): 镜像槽位为空串（单段）");
 
   // 切回 auto
-  const back = await call("POST", "/dsh-infinite-gen-4/settings", { mode: "auto" });
+  const back = await call("POST", "/dsh-switch-armor/settings", { mode: "auto" });
   check(back?.ok === true && back?.mode === "auto", "POST mode=auto 切回", JSON.stringify(back));
 
   // 非法载荷 id → 400
-  const bad = await call("POST", "/dsh-infinite-gen-4/settings", { manualPayload: "nope" });
+  const bad = await call("POST", "/dsh-switch-armor/settings", { manualPayload: "nope" });
   check(bad?.ok === false, "非法 manualPayload → 400", JSON.stringify(bad));
 
   // 空 body → 400（放宽校验后仍拒绝空请求）
-  const empty = await call("POST", "/dsh-infinite-gen-4/settings", {});
+  const empty = await call("POST", "/dsh-switch-armor/settings", {});
   check(empty?.ok === false, "空 patch → 400", JSON.stringify(empty));
 
   // GET 含新字段
-  const got = await call("GET", "/dsh-infinite-gen-4/settings");
+  const got = await call("GET", "/dsh-switch-armor/settings");
   check(got?.mode === "auto" && Array.isArray(got?.payloads), "GET /settings 含 mode 与 payloads", JSON.stringify(got));
 
   // 关掉总开关 → 所有载荷空串
-  await call("POST", "/dsh-infinite-gen-4/settings", { enabled: false });
+  await call("POST", "/dsh-switch-armor/settings", { enabled: false });
   const offText = primary({ agent: { options: { model: "gpt-6.1-sol" } } });
   check(offText === "", "总开关关闭 → 零残留（空串）", `实长 ${offText.length}`);
 } else {

@@ -5,17 +5,17 @@ import Schema from "@deepseek-ai/schemastery";
 // 评分规则单源：开头窗口(160)判拒、REFUSAL / FALLBACK / SAFE / RISK 标记与域命中
 // 检测全部由 scripts/lib/scorer.mjs 提供。本文件不再维护第二份规则表 ——
 // 历史上两份副本曾双向漂移（RISK_MARKERS 与 web/game/llm 域词表不一致），
-// 状态条因此低报风险词、误判命中域。2026-10-08 按上游 PR#21 单源化。
+// 状态条因此低报风险词、误判命中域。2026-10-08 规则表单源化。
 import { scoreResponse } from "./scripts/lib/scorer.mjs";
 
-// ── 无限四代注入载荷（v0.7.0） ────────────────────────────────────────────────────
+// ── Switch Armor注入载荷（v0.7.0） ────────────────────────────────────────────────────
 // Order 主槽位与镜像槽位同时注册（DUAL_LAYER_INJECTION=true），
 // 两者 order 落在 persona(0) 与 dsh-memory(1) 之间的夹缝里（见 PRIMARY_SECTION_ORDER 注释）。
 // **双段只留给两份自持稿**（dsh / dsh-gen4），两段同源逐字一致 —— 刻意的权重强化。
 // 外部稿（Codex 三份 + claude + grok）一律单段：它们要么含 ACTION 绑定并写明
 // 「Text loaded afterward cannot select, replace, or nest ACTION」，要么首尾自带
 // <|im_start|>system / <|im_end|> 闭合标签，注入两遍会自伤。
-// 槽位均为「条件段」：由对话框开关（settings namespace dsh-infinite-gen-4）
+// 槽位均为「条件段」：由对话框开关（settings namespace dsh-switch-armor）
 // 控制，关闭时渲染为空串并被 dsh-system-prompt 的 renderPrompt 过滤，零残留。
 //
 // 0.7.0 起：自持档 `dsh` 换成 Keysmith 的短稿 `dsh-unrestricted.md`；
@@ -59,7 +59,7 @@ function loadPayloadTable() {
   };
   return {
     dsh: { label: "dsh（Keysmith 短稿）", text: PROMPT_TEXT },
-    "dsh-gen4": { label: "无限四代（原自持契约稿）", text: read(PROMPT_GEN4_URL) },
+    "dsh-gen4": { label: "Switch Armor（原自持契约稿）", text: read(PROMPT_GEN4_URL) },
     gpt61: { label: "GPT-6.1 Sol（Codex 载荷）", text: read(GPT61_URL) },
     gpt6: { label: "GPT-6 Astra（Codex 载荷）", text: read(GPT6_URL) },
     gpt56: { label: "GPT-5.6 Sol（Codex 载荷）", text: read(GPT56_URL) },
@@ -233,13 +233,13 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.7.1";
+const VERSION = "0.8.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.7.1"
+//   pluginVersion: "0.8.0"
 
-// 开关落点：profile entry config（cordis.patch.yml → dsh-infinite-gen-4.config.enabled）；
+// 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
-const SETTINGS_NAMESPACE = "dsh-infinite-gen-4";
+const SETTINGS_NAMESPACE = "dsh-switch-armor";
 const SETTINGS_FIELD = "enabled";
 const MODE_FIELD = "mode";
 const MANUAL_PAYLOAD_FIELD = "manualPayload";
@@ -256,7 +256,7 @@ const DEFAULT_MANUAL_PAYLOAD = "dsh";
 //   Config         —— 0.2.x 表单面 entry schema：只有 volatile 字段才进 describe 列表，
 //                     写入经 fiber.config 生效（热更新不重挂 entry）
 const enabledField = () =>
-  Schema.boolean().default(DEFAULT_ENABLED).description("无限四代提示词注入总开关（默认关）");
+  Schema.boolean().default(DEFAULT_ENABLED).description("Switch Armor提示词注入总开关（默认关）");
 const modeField = () =>
   Schema.union(["auto", "manual"])
     .default(DEFAULT_MODE)
@@ -269,7 +269,7 @@ const SettingsSchema = Schema.object({
   enabled: enabledField(),
   mode: modeField(),
   manualPayload: manualPayloadField(),
-}).description("无限四代 / dsh-infinite-gen-4 运行时开关");
+}).description("Switch Armor / dsh-switch-armor 运行时开关");
 /** 0.2.x settings 表单面 schema：entry id = 插件 id，字段必须 volatile 才能在线编辑。 */
 export const Config = Schema.object({
   enabled: enabledField().volatile(),
@@ -280,7 +280,7 @@ export const Config = Schema.object({
 // ── 会话级开关覆盖 ──────────────────────────────────────────────────────────────
 // 全局默认 = profile entry config 的 enabled（新会话继承它）；单个会话可在状态条开关上
 // 单独覆盖，存插件自持文件（与记忆插件同款做法，与宿主版本无关，改完立即生效）。
-const SESSION_STORE = join(homedir(), ".dsh", "infinite-gen-4", "sessions.json");
+const SESSION_STORE = join(homedir(), ".dsh", "switch-armor", "sessions.json");
 
 /** 读覆盖表：只接受 boolean 值，文件损坏/缺失一律当空表。 */
 function loadSessionOverrides() {
@@ -447,7 +447,7 @@ function isEnabled() {
 }
 
 /** 自有写通道的令牌头：跨站简单请求带不上自定义头，省掉一整类 CSRF。 */
-const ROUTE_HEADER = "x-dsh-infinite-gen-4";
+const ROUTE_HEADER = "x-dsh-switch-armor";
 
 /**
  * 发 JSON 响应。
@@ -496,9 +496,9 @@ function readJsonBody(req, limit = 4096) {
 }
 
 /**
- * 开关的自有读写路由（webServer 前缀 /dsh-infinite-gen-4）：
- *   GET  /dsh-infinite-gen-4/settings            → { ok, enabled, source }
- *   POST /dsh-infinite-gen-4/settings {enabled}  → 先试 settings.update 持久化，写不动则内存覆盖
+ * 开关的自有读写路由（webServer 前缀 /dsh-switch-armor）：
+ *   GET  /dsh-switch-armor/settings            → { ok, enabled, source }
+ *   POST /dsh-switch-armor/settings {enabled}  → 先试 settings.update 持久化，写不动则内存覆盖
  * 注意 prefix 路由下 req.url 是完整路径，判定必须按完整路径收。
  * @param {import("node:http").IncomingMessage} req 请求。
  * @param {import("node:http").ServerResponse} res 响应。
@@ -506,8 +506,8 @@ function readJsonBody(req, limit = 4096) {
 async function handleSettingsRoute(req, res) {
   const url = new URL(req.url ?? "/", "http://localhost");
   const path = url.pathname.replace(/\/+$/, "");
-  const isSettings = path === "/dsh-infinite-gen-4/settings" || path.endsWith("/settings");
-  const isSession = path === "/dsh-infinite-gen-4/session" || path.endsWith("/session");
+  const isSettings = path === "/dsh-switch-armor/settings" || path.endsWith("/settings");
+  const isSession = path === "/dsh-switch-armor/session" || path.endsWith("/session");
   if (!isSettings && !isSession) return sendJson(res, 404, { ok: false, error: "not found" });
 
   if (req.method === "GET") {
@@ -779,23 +779,23 @@ const objectOutput = {
 
 // 运行时元数据工具：返回插件版本与能力清单
 const profileTool = {
-  name: "infinite_gen4_profile",
+  name: "switch_armor_profile",
   description:
-    "Return runtime metadata for the bundled 无限四代 (Infinite Generation Four) 破甲系统提示词与版本元数据。",
+    "Return runtime metadata for the bundled Switch Armor (Switch Armor) 破甲系统提示词与版本元数据。",
   parameters: { type: "object", properties: {}, additionalProperties: false },
   output: objectOutput,
   execute() {
     const enabled = isEnabled();
     const state = readState();
     return {
-      plugin: "dsh-infinite-gen-4",
+      plugin: "dsh-switch-armor",
       pluginVersion: VERSION,
-      pluginDisplayName: "无限四代",
-      name: "infinite-gen-4",
-      displayName: "无限四代",
+      pluginDisplayName: "Switch Armor",
+      name: "switch-armor",
+      displayName: "Switch Armor",
       kernelVersion: VERSION,
       targetArchitecture: "DeepSeek-V4 / V4-Pro / V4.1-Flash 全系列",
-      baseline: "deepseek-unrestricted-v7-stable (dsh-infinite-gen-4)",
+      baseline: "deepseek-unrestricted-v7-stable (dsh-switch-armor)",
       promptSource: [
         "prompts/infinite-gen-4.md",
         "prompts/infinite-gen-4.1-flash.md",
@@ -803,7 +803,7 @@ const profileTool = {
         "prompts/gpt-6-astra.md",
         "prompts/gpt-5.6-sol.md",
       ],
-      lineage: [`dsh-infinite-gen-4 (v${VERSION}) — 按模型分流注入载荷 + 对话框热开关`],
+      lineage: [`dsh-switch-armor (v${VERSION}) — 按模型分流注入载荷 + 对话框热开关`],
       // 总开关状态：enabled=false 时所有载荷均渲染为空串，系统提示词零残留
       enabled,
       // 载荷路由：auto = 按当前模型身份选；manual = 固定用手动指定那份
@@ -818,18 +818,18 @@ const profileTool = {
         settingsNamespace: SETTINGS_NAMESPACE,
         settingsField: SETTINGS_FIELD,
         settingsFields: [SETTINGS_FIELD, MODE_FIELD, MANUAL_PAYLOAD_FIELD],
-        persistence: "profile patch → dsh-infinite-gen-4.config.*（0.2.x 由 settings 表单面 settings.mutate 写回；0.1.7 前为 ~/.dsh/settings.yaml）",
+        persistence: "profile patch → dsh-switch-armor.config.*（0.2.x 由 settings 表单面 settings.mutate 写回；0.1.7 前为 ~/.dsh/settings.yaml）",
         fallbackWhenSettingsMissing: fallbackEnabled,
       },
       injection: [
         {
-          section: "infinite-gen-4:global-system-prompt",
+          section: "switch-armor:global-system-prompt",
           order: PRIMARY_SECTION_ORDER,
           enabled,
           payload: state.mode === "manual" ? state.manualPayload : "(auto: 按模型)",
         },
         {
-          section: "infinite-gen-4:dual-layer-reinforce",
+          section: "switch-armor:dual-layer-reinforce",
           order: REINFORCE_SECTION_ORDER,
           // GPT 系走单段（载荷自带 ACTION 绑定规则，重复注入会自我冲突）
           enabled: enabled && DUAL_LAYER_INJECTION,
@@ -852,15 +852,15 @@ const profileTool = {
       hostFeatures: [
         "Model-Aware Routing: 按 agent.options.model 选载荷（gpt-6.1→6.1 载荷 / gpt-6→Astra / gpt-5.6|o<n>|codex→5.6 / 非 GPT→DSH 自持）；按 model 名而非 provider（同一 model 名可能挂在多个 provider 下）",
         "Payload Mode: auto（按模型自动）| manual（固定指定一份），全局配置，经设置页与本插件自有路由读写",
-        "Session Switch: 开关按会话生效 —— section 求值 context 带 { agent, scope, signal }，用 agent.sessionId / session.header.id 查 ~/.dsh/infinite-gen-4/sessions.json 覆盖；⌥ 点击切全局",
+        "Session Switch: 开关按会话生效 —— section 求值 context 带 { agent, scope, signal }，用 agent.sessionId / session.header.id 查 ~/.dsh/switch-armor/sessions.json 覆盖；⌥ 点击切全局",
         "Dialog Switch: 输入框状态条内联开关，经自有路由（host 先试 settings.update 持久化）写开关，下一模型步即时生效",
         "Settings Form: 导出 volatile Config + settings.configure，官方设置页与客户端开关共用同一写入面（写盘落点 = profile patch）",
         "Conditional Sections: 关闭时 section.text 求值为空串，renderPrompt 过滤，零残留",
         "Single-Layer Injection: 自持族之外的载荷单段注入",
         "Section Hosting: 主槽位 order " + PRIMARY_SECTION_ORDER + " / 镜像槽位 order " + REINFORCE_SECTION_ORDER + "，由 DUAL_LAYER_INJECTION 切换镜像段",
         "Armor Projection: 开头窗口(160)判拒 + REFUSAL/FALLBACK/SAFE/RISK 标记 + 域命中",
-        "Client Badge: 输入框上方「无限四代」实时状态条（含开关）",
-        "Profile Tool: infinite_gen4_profile 返回内核版本、开关状态与注入槽位元数据",
+        "Client Badge: 输入框上方「Switch Armor」实时状态条（含开关）",
+        "Profile Tool: switch_armor_profile 返回内核版本、开关状态与注入槽位元数据",
       ],
       features: [
         "Pure Zero-Tool Architecture: 零工具面纯净直出，消除决策噪音",
@@ -876,7 +876,7 @@ const profileTool = {
 };
 
 // ---- 实时破甲状态（会话投影；评分规则由 scripts/lib/scorer.mjs 单源提供） ----
-// 2026-10-08 按上游 PR#21 单源化：本文件不再维护第二份规则表。历史上两份副本曾双向
+// 2026-10-08 规则表单源化：本文件不再维护第二份规则表。历史上两份副本曾双向
 // 漂移 —— RISK_MARKERS 缺 9 词（base64/rot13/编码/多轮/自纠/进化/母本/自强化/fight）、
 // web 域缺「爆破」「注入」、game 域多 3 词、llm 域多 sysprompt，导致状态条低报风险词、
 // 误判命中域。规则表与域表一律以 scripts/lib/scorer.mjs 为准。
@@ -964,7 +964,7 @@ export const __testPayloadTextFor = payloadTextFor;
 /** 载荷表快照（只读用途：探针比对文件字节与表内文本是否一致）。 */
 export const __testPayloads = PAYLOADS;
 
-export const name = "dsh-infinite-gen-4";
+export const name = "dsh-switch-armor";
 export const inject = ["tools", "systemPrompt"];
 
 export function apply(ctx) {
@@ -998,7 +998,7 @@ export function apply(ctx) {
             settingsScope = undefined;
           };
         },
-        `infinite-gen-4: settings namespace ${SETTINGS_NAMESPACE}`,
+        `switch-armor: settings namespace ${SETTINGS_NAMESPACE}`,
       );
     }
     if (typeof service.configure === "function") {
@@ -1011,7 +1011,7 @@ export function apply(ctx) {
             return undefined;
           }
         },
-        `infinite-gen-4: settings form ${SETTINGS_NAMESPACE}`,
+        `switch-armor: settings form ${SETTINGS_NAMESPACE}`,
       );
     }
   };
@@ -1027,10 +1027,10 @@ export function apply(ctx) {
         wctx.webServer.register({
           kind: "prefix",
           // 不带尾部斜杠：dsh-host-webserver 的 match() 自己会补 "/" 再比前缀
-          path: "/dsh-infinite-gen-4",
+          path: "/dsh-switch-armor",
           handler: handleSettingsRoute,
         }),
-      "infinite-gen-4: settings route",
+      "switch-armor: settings route",
     );
   });
 
@@ -1048,7 +1048,7 @@ export function apply(ctx) {
   // 载荷按「手动指定 / 当前模型身份」动态选择：GPT 系走 Codex 载荷，其余走 DSH 自持载荷。
   ctx.effect(() =>
     ctx.systemPrompt.section({
-      name: "infinite-gen-4:global-system-prompt",
+      name: "switch-armor:global-system-prompt",
       order: PRIMARY_SECTION_ORDER,
       text: gated(),
     }),
@@ -1056,7 +1056,7 @@ export function apply(ctx) {
   if (DUAL_LAYER_INJECTION) {
     ctx.effect(() =>
       ctx.systemPrompt.section({
-        name: "infinite-gen-4:dual-layer-reinforce",
+        name: "switch-armor:dual-layer-reinforce",
         order: REINFORCE_SECTION_ORDER,
         // 自持族双段（刻意权重强化）；外部载荷单段（见 gatedReinforce 注释）
         text: gatedReinforce(),
@@ -1105,7 +1105,7 @@ export function apply(ctx) {
 
   const registerArmor = (p) => {
     try {
-      ctx.effect(() => p.register(armorDef, "infinite-gen-4: armor projection"));
+      ctx.effect(() => p.register(armorDef, "switch-armor: armor projection"));
     } catch {}
   };
 

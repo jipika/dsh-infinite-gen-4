@@ -1,4 +1,4 @@
-// 无限四代 兼容回归校验（零工具面纯净版）—— 三代遗留断言，见文末说明
+// Switch Armor 兼容回归校验（零工具面纯净版）—— 三代遗留断言，见文末说明
 // 本脚本聚焦：双层内核载荷锚点 / 注入面同源覆盖 / index.js 导出 / 一键安装协议 / 用例库结构。
 // 权威断言（品牌纯净度 + 同源逐字比对）由 verify_prompt_gen4.mjs 执行；本脚本可独立运行。
 // 用法：node scripts/verify_prompt.mjs [--json]
@@ -107,15 +107,15 @@ check(zh > 0 && en > 0, "双语覆盖", `zh=${zh} en=${en}`);
 
 // ---- 5. index.js 注入槽位与导出 ----
 const indexSrc = existsSync(INDEX_PATH) ? readFileSync(INDEX_PATH, "utf8") : "";
-mustContain(indexSrc, 'export const name = "dsh-infinite-gen-4"', "index.js name");
+mustContain(indexSrc, 'export const name = "dsh-switch-armor"', "index.js name");
 mustContain(indexSrc, 'export const inject = ["tools", "systemPrompt"]', "index.js inject");
 mustContain(indexSrc, "ctx.tools.register(profileTool)", "工具: profile(元数据)");
 mustContain(indexSrc, '"./prompts/infinite-gen-4.md"', "index.js 载入 Order 100 内核");
 mustContain(indexSrc, '"./prompts/infinite-gen-4.1-flash.md"', "index.js 载入 Order 200 镜像");
-mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "注入槽位 Order 100");
-mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "注入槽位 Order 200");
+mustContain(indexSrc, "switch-armor:global-system-prompt", "注入槽位 Order 100");
+mustContain(indexSrc, "switch-armor:dual-layer-reinforce", "注入槽位 Order 200");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "双段注入开关");
-mustContain(indexSrc, 'pluginVersion: "0.7.1"', "内核版本 0.7.1");
+mustContain(indexSrc, 'pluginVersion: "0.8.0"', "内核版本 0.8.0");
 mustContain(indexSrc, "stateVersion: 3", "投影 stateVersion 3");
 // 评分器单源修订（2026-10-08 按上游 PR#21）：规则表位于 scripts/lib/scorer.mjs，
 // index.js 只做委托调用，不再维护第二份副本。
@@ -132,11 +132,11 @@ const ps1 = existsSync(PS1_PATH) ? readFileSync(PS1_PATH, "utf8") : "";
 const sh = existsSync(SH_PATH) ? readFileSync(SH_PATH, "utf8") : "";
 mustContain(ps1, "Software\\Classes\\dsh", "install.ps1: dsh:// 协议注册");
 mustContain(ps1, "DSH_PROFILE", "install.ps1: DSH_PROFILE 探测");
-mustContain(ps1, "dsh-infinite-gen-4", "install.ps1: 插件名");
-mustContain(ps1, "无限四代 v0.5.0", "install.ps1: 状态条版本提示");
+mustContain(ps1, "dsh-switch-armor", "install.ps1: 插件名");
+mustContain(ps1, "Switch Armor v0.5.0", "install.ps1: 状态条版本提示");
 mustContain(sh, "DSH_PROFILE", "install.sh: DSH_PROFILE 探测");
-mustContain(sh, "无限四代 v0.5.0", "install.sh: 状态条版本提示");
-mustContain(readFileSync(join(ROOT, "README.md"), "utf8"), "dsh-infinite-gen-4", "README: 四代插件 id");
+mustContain(sh, "Switch Armor v0.5.0", "install.sh: 状态条版本提示");
+mustContain(readFileSync(join(ROOT, "README.md"), "utf8"), "dsh-switch-armor", "README: 四代插件 id");
 
 // ---- 7. 汇总 ----
 const json = process.argv.includes("--json");

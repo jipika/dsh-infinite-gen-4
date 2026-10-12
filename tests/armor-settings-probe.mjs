@@ -50,7 +50,7 @@ globalThis.window = {
 // client.js 顶层是 IIFE，直接 eval 即可捕获 spec
 new Function("window", "console", CLIENT_SRC)(globalThis.window, console);
 check(captured !== undefined, "捕获到 client module spec");
-check(captured?.id === "dsh-infinite-gen-4", "spec id 正确", String(captured?.id));
+check(captured?.id === "dsh-switch-armor", "spec id 正确", String(captured?.id));
 
 const exportsObj = captured.factory((name) => {
   if (name === "react") return react;
@@ -66,7 +66,7 @@ let routeResponse = {
   manualPayload: "dsh",
   payloads: [
     { id: "dsh", label: "dsh（Keysmith 短稿）" },
-    { id: "dsh-gen4", label: "无限四代（原自持契约稿）" },
+    { id: "dsh-gen4", label: "Switch Armor（原自持契约稿）" },
     { id: "gpt61", label: "GPT-6.1 Sol（Codex 载荷）" },
     { id: "gpt6", label: "GPT-6 Astra（Codex 载荷）" },
     { id: "gpt56", label: "GPT-5.6 Sol（Codex 载荷）" },
@@ -97,9 +97,9 @@ const dockEntry = registered.find((r) => r.options.name === "conversation.input.
 const tabEntry = registered.find((r) => r.options.name === "settings.plugins.tab");
 check(dockEntry !== undefined, "注册了对话栏状态条 slot");
 check(tabEntry !== undefined, "注册了 settings.plugins.tab slot");
-check(tabEntry?.options.id === "dsh-infinite-gen-4", "tab id = 插件包名", String(tabEntry?.options.id));
-check(typeof tabEntry?.options.label === "function" && tabEntry.options.label() === "无限四代",
-  "tab 标签 = 无限四代", String(tabEntry?.options.label?.()));
+check(tabEntry?.options.id === "dsh-switch-armor", "tab id = 插件包名", String(tabEntry?.options.id));
+check(typeof tabEntry?.options.label === "function" && tabEntry.options.label() === "Switch Armor",
+  "tab 标签 = Switch Armor", String(tabEntry?.options.label?.()));
 
 // ── 渲染设置页组件：断言七份载荷都列出来、自动模式下的选中态 ────────────────
 // apply 里已经触发过一次 routing.refresh()；等它 settle 再渲染
@@ -135,8 +135,8 @@ manualBtn.props.onClick();
 await new Promise((resolve) => setTimeout(resolve, 30));
 const post = fetched.find((f) => f.init && f.init.method === "POST");
 check(post !== undefined, "点击后发出 POST");
-check(post?.url === "/dsh-infinite-gen-4/settings", "打到自有路由 /settings", String(post?.url));
-check(post?.init?.headers?.["x-dsh-infinite-gen-4"] === "1", "带自有路由令牌头");
+check(post?.url === "/dsh-switch-armor/settings", "打到自有路由 /settings", String(post?.url));
+check(post?.init?.headers?.["x-dsh-switch-armor"] === "1", "带自有路由令牌头");
 const sent = post?.init?.body ? JSON.parse(post.init.body) : undefined;
 check(sent?.mode === "manual", "请求体 mode=manual", JSON.stringify(sent));
 

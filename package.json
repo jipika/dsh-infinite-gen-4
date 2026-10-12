@@ -1,12 +1,12 @@
 {
-  "name": "dsh-infinite-gen-4",
-  "version": "0.7.1",
-  "description": "DeepSeek-V4.1 / V4 Flash 网络安全红队工具（无限四代）v0.7.1：双层协同注入内核 + 对话框热开关，按模型分流 7 份载荷（自持 dsh / 备用 dsh-gen4 / Codex 三档 / Claude / Grok），settings 命名空间落盘、profile 元数据工具、实时会话投影与客户端状态条。",
+  "name": "dsh-switch-armor",
+  "version": "0.8.0",
+  "description": "Switch Armor — DeepSeek Harness 的系统提示词注入引擎：按会话实际模型在 7 份交付契约间自动分流，段位可控、会话级开关、实时状态投影。",
   "type": "module",
   "main": "./index.js",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Minglink/dsh-infinite-gen-4.git"
+    "url": "https://github.com/jipika/dsh-switch-armor.git"
   },
   "exports": {
     ".": "./index.js",
@@ -33,11 +33,11 @@
     "verify:gen4": "node scripts/verify_prompt_gen4.mjs"
   },
   "dsh": {
-    "id": "dsh-infinite-gen-4",
-    "name": "无限四代",
-    "version": "0.7.1",
-    "repo": "Minglink/dsh-infinite-gen-4",
-    "permissions": "系统提示词注入, 客户端状态条, 用户设置（dsh-infinite-gen-4 命名空间）",
+    "id": "dsh-switch-armor",
+    "name": "Switch Armor",
+    "version": "0.8.0",
+    "repo": "jipika/dsh-switch-armor",
+    "permissions": "系统提示词注入, 客户端状态条, 用户设置（dsh-switch-armor 命名空间）",
     "bundle": {
       "patch": "./cordis.patch.yml"
     },

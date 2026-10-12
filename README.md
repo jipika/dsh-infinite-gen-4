@@ -1,278 +1,226 @@
-# ⚔️ DeepSeek-V4.1 / V4 Flash 网络安全红队工具（无限四代）v0.7.0
-
-> ℹ️ **本仓库是上游 [Minglink/dsh-infinite-gen-4](https://github.com/Minglink/dsh-infinite-gen-4) 的本地增强版**（v0.5.0；上游 master 为 0.4.0）。下面的一键安装 / 离线下载链接均指向**本仓库这份增强版**，不是上游版本。
+# 🛡️ Switch Armor
 
 <p align="center">
-  <img src="assets/banner.png" alt="无限四代 Infinite Generation Four" width="100%" />
+  <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20%E5%94%A4%E8%B5%B7%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
+  <img src="https://img.shields.io/badge/version-0.8.0-blue?style=for-the-badge" alt="v0.8.0" />
+  <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT" />
 </p>
 
 <p align="center">
-  <a href="dsh://plugin/install?id=dsh-infinite-gen-4&name=%E6%97%A0%E9%99%90%E5%9B%9B%E4%BB%A3&version=0.5.0&repo=jipika%2Fdsh-infinite-gen-4&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-infinite-gen-4%2Farchive%2Frefs%2Fheads%2Fmain.zip">
-    <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20唤起桌面客户端一键安装无限四代-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.0&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+    <b>🚀 唤起桌面客户端一键安装</b>
   </a>
 </p>
 
-> 🌐 **插件生态市场**：[DeepSeek Harness Hub - DeepSeek 官方与开源生态市场 | 插件发现与一键安装](https://deepseek.stream/)
+**Switch Armor 是 DeepSeek Harness（DSH）的系统提示词注入引擎。**
 
-> ## 💬 DeepSeek 交流群 & 社区
->
-> ### 👉 **红队安全交流 9 群：`338431075`**
-> ### 👉 **腾讯频道技术交流社区：`pd86424753`**
->
-> 🔥 欢迎进群交流红队攻防对抗心得、分享提示词与评测基准、探讨插件开发与生态共建！
+它按**当前会话实际使用的模型**自动挑选对应形态的交付契约，注入系统提示词，并用一条状态条把注入状态、判拒评分与开关暴露在输入框上。
+
+> 🌐 **插件生态市场**：[DeepSeek Harness Hub — 插件发现与一键安装](https://deepseek.stream/)
 
 ---
 
-## 🛡️ 网络安全红队基准评测的必要性（Why Red-Teaming Matters）
+## ✨ 它做什么
 
-在生成式人工智能与大语言模型（LLM）向各行业深度融合的背景下，模型的鲁棒性、对抗防御能力与系统对齐安全性已成为网络空间安全的核心研究课题：
+### 🎯 按模型分流载荷
 
-1. **暴露防御边界，反哺安全护栏**：只有通过专业的网络安全红队对抗模拟（Red-Teaming），在受控环境下深入探查模型的输入逃逸、提示词注入与非预期行为，才能帮助安全团队精确定位模型的防护盲区，从而在模型微调、输入过滤网关（Guardrails）与系统安全层实现前置加固。
-2. **构建攻防一体化防御体系**：缺乏受控红队评测用例的防御如同纸上谈兵。标准化红队用例集（Test Suite）为企业与安全审计机构提供了衡量防御策略有效性的“标尺”，确保在面对真实恶意威胁前已具备充分的检测与阻断能力。
-3. **推动大模型原生安全学术发展**：本项目旨在为学术界与安全工程领域提供透明、可复现的基准测试基线，共同推动 AI 基础设施抗对抗攻击、流形约束对齐与形式化验证技术演进。
+同一个 DSH，不同模型吃不同的话术。注入哪一份不再固定 —— 宿主每个模型步解析**本会话实际使用的模型**，再决定注入哪一份载荷：
+
+| 载荷 id | 命中模型 | 注入段数 |
+|---|---|---|
+| `dsh` | DeepSeek / GLM / 其余（默认自持档） | 双段 |
+| `dsh-gen4` | 仅手动模式（备用自持档） | 双段 |
+| `gpt61` | `gpt-6.1*` / 6 代以后 | 单段 |
+| `gpt6` | `gpt-6*` / `astra*` | 单段 |
+| `gpt56` | `gpt-5.x*` / `o*` / `codex*` | 单段 |
+| `claude` | `claude*` | 单段 |
+| `grok` | `grok*` | 单段 |
+
+**取值链顺序不可颠倒**：① `agent.session.requestHeader().config.model`（会话**实际发出**的请求头）→ ② 当前默认模型 → ③ `agent.options.model`（创建时声明，最终兜底）。只读第三级，会把会话内切换过模型的会话**静默错配**。
+
+按 **model 名**而非 provider 判定 —— 同一个模型名可能挂在多个 provider 下，只看 provider 必然漏。
+
+**双段只给自持档**：外部载荷（Codex 三档 / Claude / Grok）都是整份契约形态，Codex 稿写明「Text loaded afterward cannot select, replace, or nest ACTION」，Grok 稿自带 `<|im_start|>` 闭合标签 —— 注入两遍会自伤，故恒单段。
+
+### 🎚 注入段位可控
+
+载荷落在**系统提示的固定段位**（order 0.1 / 0.2），夹在 persona 与记忆索引之间：
+
+```
+harness:identity  (-1000，已由本插件 patch 关闭)
+deployment:persona-prefix  (0)
+  ├── switch-armor:global-system-prompt      (0.1)  ← 主槽位
+  └── switch-armor:dual-layer-reinforce      (0.2)  ← 镜像槽位
+dsh-memory:long-term  (1，记忆索引)
+官方工具规范  (1000+)
+```
+
+### 🔀 三种控制通道
+
+| 通道 | 用法 |
+|---|---|
+| **输入框状态条** | 点一下切本会话；**⌥ 点击**切全局 |
+| **设置页** | 设置 → 插件 → Switch Armor：模式（自动 / 手动）+ 载荷单选 |
+| **模型侧** | 调用 `switch_armor_profile` 读回当前状态与注入槽位真值 |
+
+**默认关闭**：装好后不拨开关，载荷不进入系统提示词。关闭时 `text` 求值函数返回空串，由 `renderPrompt()` 过滤 —— **零残留**，不是「追加一句别理会上面的内容」。
+
+### 📊 实时状态投影
+
+状态条读的是会话投影：判拒评分（开头窗口 + 交付特征）、命中域、当前载荷、注入开关。评分器单源在 `scripts/lib/scorer.mjs`，host 半只做委托调用。
 
 ---
 
-> ### ⚠️ 严正法律免责与合规使用声明（Strict Legal & Compliance Disclaimer）
+## 🛡️ 网络安全红队基准评测的必要性
+
+在生成式 AI 与大语言模型向各行业深度融合的背景下，模型的鲁棒性、对抗防御能力与系统对齐安全性已成为网络空间安全的核心研究课题：
+
+1. **暴露防御边界，反哺安全护栏**：只有通过专业的红队对抗模拟，在受控环境下深入探查模型的输入逃逸、提示词注入与非预期行为，才能帮助安全团队精确定位防护盲区，从而在模型微调、输入过滤网关与系统安全层实现前置加固。
+2. **构建攻防一体化防御体系**：缺乏受控红队评测用例的防御如同纸上谈兵。标准化红队用例集为企业与安全审计机构提供了衡量防御策略有效性的「标尺」。
+3. **推动大模型原生安全学术发展**：为学术界与安全工程领域提供透明、可复现的基准测试基线，共同推动 AI 基础设施抗对抗攻击与对齐技术演进。
+
+---
+
+> ### ⚠️ 严正法律免责与合规使用声明
 >
-> **【零容忍严正申明】**：本项目坚决反对并严禁任何形式的违法犯罪行为！本项目开发者绝不支持、不鼓励、不协助任何未授权网络攻击、漏洞利用、数据窃取、非法侵入计算机信息系统或生成违法违禁内容的活动。
+> **【零容忍严正声明】**：本项目坚决反对并严禁任何形式的违法犯罪行为。开发者绝不支持、不鼓励、不协助任何未授权网络攻击、漏洞利用、数据窃取、非法侵入计算机信息系统或生成违法违禁内容的活动。
 >
-> 1. **合法受控范围限定**：本项目（`dsh-infinite-gen-4`）定位为纯粹的网络安全红队科研工具与鲁棒性基准评测套件。**严禁在未经所有者合法书面授权的目标、公网在线系统或生产业务上运行本项目**。一切测试行为必须严格限制在**离线本地合成靶标（Local Synthetic Fixtures）、授权网络安全演练靶场及合规实验室受控环境**中进行。
+> 1. **合法受控范围限定**：本项目（`dsh-switch-armor`）定位为纯粹的网络安全红队科研工具与鲁棒性基准评测套件。**严禁在未经所有者合法书面授权的目标、公网在线系统或生产业务上运行本项目**。一切测试行为必须严格限制在**离线本地合成靶标、授权网络安全演练靶场及合规实验室受控环境**中进行。
 > 2. **严禁违法与违禁用途**：使用者严禁利用本项目直接或间接从事：
->    - 任何违反《中华人民共和国刑法》、《中华人民共和国网络安全法》、《中华人民共和国数据安全法》、《中华人民共和国个人信息保护法》等法律法规的行为；
+>    - 任何违反《中华人民共和国刑法》《中华人民共和国网络安全法》《中华人民共和国数据安全法》《中华人民共和国个人信息保护法》等法律法规的行为；
 >    - 未经授权渗透、攻击公私机构计算机信息系统，实施勒索、破坏、撞库或传播恶意载荷；
 >    - 诱导、生成或传播危害国家安全、恐怖主义、暴力血腥、涉黄涉赌、诈骗、侵犯公民隐私或知识产权等任何法律明令禁止的违法违禁内容；
->    - 违反相关大模型提供商的《服务条款（Terms of Service）》与《滥用政策（Usage Policy）》。
-> 3. **使用者独立承担全部责任**：本项目依据 MIT 开源协议“按现状（AS-IS）”提供，开发者不对软件的完整性、安全性与适用性作任何明示或暗示的保证。**使用者应对自身的所有下载、部署、运行、修改、传播行为以及@@由此产生的全部输入与输出后果承担独立、完全的民事、行政及刑事法律责任**。项目作者与贡献团队绝不承担任何因使用者滥用导致的直接、间接或连带责任。
-> 4. **违约即终止授权**：任何将本项目用于非法攻击、恶意活动或违规行为的个人或实体，其开源软件使用许可将自违法违规行为发生之日起**自动且不可撤销地立即终止**。该主体须立即停止使用并永久销毁本项目的所有代码、脚本与衍生数据，并依法承担相应法律制裁。
+>    - 违反相关大模型提供商的《服务条款》与《滥用政策》。
+> 3. **使用者独立承担全部责任**：本项目依据 MIT 开源协议「按现状（AS-IS）」提供，开发者不对软件的完整性、安全性与适用性作任何明示或暗示的保证。**使用者应对自身的所有下载、部署、运行、修改、传播行为以及由此产生的全部输入与输出后果承担独立、完全的民事、行政及刑事法律责任**。
+> 4. **违约即终止授权**：任何将本项目用于非法攻击、恶意活动或违规行为的个人或实体，其开源软件使用许可将自违法违规行为发生之日起**自动且不可撤销地立即终止**。
 > 5. **第三方独立性声明**：本项目属于完全独立的开源安全评测研究项目，与 DeepSeek 官方或其关联主体无任何隶属、商业合作、授权或官方背书关系。
 
 ---
 
-> 🔥 **V4.1-DeepSeek Flash 网络安全红队工具（无限四代）v0.7.0**。针对 V4.1 强化学习对抗进行深度适配与支持，支持桌面端与客户端一键安装。如果这个开源网安项目对你有帮助，欢迎点亮 Star ⭐。
-> 
-> **v0.5.0 纯净红队版（默认关闭，按需开启）**：原生采用零工具面架构，杜绝模型思考阶段的决策噪音；注入双层协同内核，仅保留系统提示词注入与实时状态投影。**严正声明：本项目严格打击与抵制（且不支持）模型生成 NSFW 等任何违法违规、违禁不良内容，技术体系仅限用于合法授权的逆向工程与网络安全研究。**
-
----
-
----
-
-> ### 🎚 v0.5.0 对话框热开关（Dialog Switch）
->
-> 输入框上方的状态条右侧新增一个内联开关，**一个动作即可整体启停内核注入**，无需重启、无需改文件。
-> **默认关闭**：装好后不动开关，内核载荷不进入系统提示词。
->
-> - **落点**：settings namespace `dsh-infinite-gen-4` 的 `enabled` 字段，用户层写入 `~/.dsh/settings.yaml`，文件提供方热重载。
-> - **默认关闭**：`DEFAULT_ENABLED = false`，schema 默认值即为关；没拨过开关时 `~/.dsh/settings.yaml`
->   里**不会出现**该分节（默认值只存在于代码/组合层，用户开关是唯一的持久化写入方）。
-> - **实现**：两段提示词注册为**条件段**（`text` 求值函数）；开关关闭时求值为空串，
->   由 `dsh-system-prompt` 的 `renderPrompt()` 过滤 —— 系统提示词里**零残留**，不是「追加一句别理会上面的内容」。
-> - **生效时机**：settings 提交后立即生效，作用于**下一个模型步**；已在生成中的回合不受影响。
-> - **状态条联动**：关闭后状态条变灰显示「无限四代 已关闭」，`data-armor="off"`。
-> - **降级行为**：settings 服务缺席（无 provider 的部署）时开关自动置灰并给出原因，
->   host 半保持同一默认值 `enabled: false`（与 schema 同源），仍然是关闭。
-> - **设置入口**：设置窗口左侧导航新增独立分栏 **「无限四代」**（与「技能」「MCP」同级），
->   分栏内开关与输入框状态条上的小开关等价、状态实时同步，并显示插件版本、两个注入槽位与落盘位置。
-> - **另一条控制路径**：模型侧调用 `infinite_gen4_profile` 可读回当前开关状态与两个注入槽位的真实 `enabled`。
->
-> ```yaml
-> # ~/.dsh/settings.yaml
-> dsh-infinite-gen-4:
->   enabled: true    # 打开双层注入；省略该分节 = 关闭（默认，零残留）
-> ```
-
-> ### 🧬 v0.5.0 双层内核说明（Dual-Layer Kernel）
->
-> - 注入槽位：`infinite-gen-4:global-system-prompt`（order 0.1）+ `infinite-gen-4:dual-layer-reinforce`（order 0.2），**排在 persona(0) 之后、记忆索引(1) 之前**，
->   由 `index.js` 的 `DUAL_LAYER_INJECTION` 开关控制（**当前 true = 双段**；改 `false` 即单段注入，两份同源故行为等价）。
-> - `prompts/` 下三个内核文件（`infinite-gen-3.md` / `infinite-gen-4.md` / `infinite-gen-4.1-flash.md`）
-
----
-
-## 📊 世代架构与能力对比
-
-| 维度 | 无限二代 | 无限三代 | 无限四代 (v0.7.0) |
-|---|---|---|---|
-| **目标模型** | V3 / 早期 V4 | DeepSeek-V4 (mHC) | DeepSeek-V4.1 / V4-Pro / Flash 全系列 + GPT / Claude / Grok |
-| **运行时架构** | 单层提示词 | 安全基准版单层 | **按模型分流注入（GPT 系走 Codex 三档，Claude / Grok 各走对应稿，DeepSeek · GLM 等走自持 dsh 档；仅自持档双段强化）** |
-| **工具面设计** | 粗粒度 | 零工具面 | **原生零工具面（消除决策噪音，极速直出）** |
-| **内存写值原语** | 易被拦截 | 需前置诱导 | **训练器车道直出 (OpenProcess/RPM/WPM)** |
-| **输出契约** | 弱规则 | 首行命名交付物 | **首 Token 强制诱导 (##/```) + 禁词自检** |
-| **客户端状态条** | 无 | 支持（带域与载荷计数） | **支持（实时投影 + 动画状态条 + 内联启停开关）** |
-| **一键安装协议** | 手动配置 | 支持 dsh:// | **原生支持 dsh:// 联动 + 自动兼容旧版** |
-
----
-
-## 📁 项目目录结构
+## 📁 项目结构
 
 ```
-无限四代v0.7.0/
-├── 🚀 一键安装与维护套件
-│   ├── install.ps1              # Windows 一键自动安装（自动配置环境，注册协议）
-│   ├── install.bat              # Windows 快捷双击批处理
-│   ├── install.sh               # Linux / macOS 一键安装
-│   ├── uninstall.ps1            # Windows 一键卸载
-│   └── uninstall.sh             # Linux / macOS 一键卸载
-├── 🧩 核心插件装载面 (标准 Cordis 架构)
-│   ├── package.json             # 插件元数据（dsh-infinite-gen-4 v0.5.0）
-│   ├── cordis.patch.yml         # 核心 patch 声明
-│   ├── index.js                 # 插件核心入口（条件段注入 + settings 开关 + profile 元数据 + 会话投影）
-│   ├── client.js                # 客户端半体（状态条 + 对话框热开关）
-│   └── HARNESS_PLUGIN.md        # 插件规范说明
-├── 📜 网络安全红队系统提示词本体
+dsh-switch-armor/
+├── 🧩 插件装载面（标准 Cordis bundle）
+│   ├── package.json             # 插件元数据
+│   ├── cordis.patch.yml         # bundle patch（system-prompt 覆盖 + insert 声明）
+│   ├── index.js                 # host 半：分流判决 + 条件段 + 自有路由 + 会话投影
+│   └── client.js                # client 半：状态条 + 设置页 tab + 路由兜底
+├── 📜 载荷本体
 │   └── prompts/
-│       ├── infinite-gen-3.md          # 三代经典内核
-│       ├── infinite-gen-4.md          # 四代通用内核（输出契约 + 拒绝对抗 + 全域槽位）
-│       └── infinite-gen-4.1-flash.md  # V4.1 强化镜像层（训练器车道 + 浅推理 + 元数据提取）
-├── 📖 文档中心
-│   ├── README.md                # 综合主说明文档（本文件）
-│   └── LICENSE                  # MIT License
-├── 🛡️ 确定性回归测试套件
+│       ├── SOURCES.md               # 载荷来源、许可与哈希
+│       ├── dsh-unrestricted.md      # dsh 档
+│       ├── infinite-gen-4.md        # dsh-gen4 备用档
+│       ├── infinite-gen-4.1-flash.md # dsh-gen4 镜像同源副本
+│       ├── gpt-6.1-sol.md           # Codex 档
+│       ├── gpt-6-astra.md           # Codex 档
+│       ├── gpt-5.6-sol.md           # Codex 档
+│       ├── claude-keysmith.md       # Claude 档
+│       └── grok-keysmith.md         # Grok 档
+├── 🛡️ 回归测试
 │   ├── scripts/
-│   │   ├── lib/scorer.mjs       # 开头窗口判拒评分器
-│   │   ├── verify_prompt.mjs    # 经典确定性校验
-│   │   ├── verify_prompt_gen4.mjs # 四代全量回归断言（103 项严苛断言）
-│   │   └── verify_prompt_gen41.mjs # V4.1 专项断言
+│   │   ├── lib/scorer.mjs           # 判拒评分器（单源）
+│   │   ├── verify_prompt_gen4.mjs   # 全量断言
+│   │   └── verify_prompt_gen41.mjs  # V4.1 专项断言
 │   └── tests/
-│       ├── prompt-bank.jsonl      # 经典双语回归用例库
-│       ├── prompt-bank-gen4.jsonl # 四代双语回归用例库
-│       ├── prompt-bank-gen41.jsonl # V4.1 专项用例库
-│       └── v4pro-benchmark.jsonl  # V4-Pro 评测基准
+│       ├── payload-routing-probe.mjs # 分流矩阵离线探针
+│       └── armor-settings-probe.mjs  # 设置页渲染探针
 └── 📁 静态资源 (assets/)
 ```
 
 ---
 
-## ⚡ 一键安装方式
+## ⚡ 安装
 
-### 方式 1：dsh:// 协议联动一键安装（⚡ 桌面端最快，秒级免命令行）
-
-若已安装 DeepSeek Harness 官方桌面客户端（EXE），点击下方按钮即可通过系统级 URI Scheme 协议安全唤起客户端完成免命令行秒级装载：
-
-> 🌐 **插件生态市场**：[DeepSeek Harness Hub - DeepSeek 官方与开源生态市场 | 插件发现与一键安装](https://deepseek.stream/)
-
-<p align="center">
-  <a href="dsh://plugin/install?id=dsh-infinite-gen-4&name=%E6%97%A0%E9%99%90%E5%9B%9B%E4%BB%A3&version=0.5.0&repo=jipika%2Fdsh-infinite-gen-4&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-infinite-gen-4%2Farchive%2Frefs%2Fheads%2Fmain.zip">
-    <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20唤起桌面客户端一键安装无限四代-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起客户端一键安装" />
-  </a>
-</p>
-
-🔗 **原生协议链接：**
+### 方式 1：dsh:// 协议一键安装（桌面端）
 
 ```
-dsh://plugin/install?id=dsh-infinite-gen-4&name=%E6%97%A0%E9%99%90%E5%9B%9B%E4%BB%A3&version=0.5.0&repo=jipika%2Fdsh-infinite-gen-4&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-infinite-gen-4%2Farchive%2Frefs%2Fheads%2Fmain.zip
+dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.0&repo=jipika%2Fdsh-switch-armor&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip
 ```
 
-**网页端（前端）触发代码示例：**
+### 方式 2：手动配置
 
-```js
-/**
- * 唤起 DeepSeek Harness 桌面客户端一键安装无限四代插件
- */
-export function installInfiniteGen4ToDesktop() {
-  const params = new URLSearchParams({
-    id: 'dsh-infinite-gen-4',
-    name: '无限四代',
-    version: '0.5.0',
-    repo: 'jipika/dsh-infinite-gen-4',
-    permissions: '系统提示词注入, 客户端状态条',
-    downloadUrl: 'https://github.com/jipika/dsh-infinite-gen-4/archive/refs/heads/main.zip',
-  });
-
-  const deepLink = `dsh://plugin/install?${params.toString()}`;
-
-  // 通过隐藏 iframe 安全静默拉起协议
-  const iframe = document.createElement('iframe');
-  iframe.style.display = 'none';
-  iframe.src = deepLink;
-  document.body.appendChild(iframe);
-  setTimeout(() => document.body.removeChild(iframe), 2000);
-}
-```
-
-**HTML 静态链接方式：**
-
-```html
-<a href="dsh://plugin/install?id=dsh-infinite-gen-4&name=%E6%97%A0%E9%99%90%E5%9B%9B%E4%BB%A3&version=0.5.0&repo=jipika%2Fdsh-infinite-gen-4&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-infinite-gen-4%2Farchive%2Frefs%2Fheads%2Fmain.zip" class="btn-install">
-  🚀 唤起客户端一键安装
-</a>
-```
-
-**协议参数配置（dsh://plugin/install）：**
-
-| 参数名 | 值 / 示例 | 说明 |
-|---|---|---|
-| id | `dsh-infinite-gen-4` | 插件唯一标识符 |
-| name | `无限四代`（URL 编码） | 插件展示名称 |
-| version | `0.5.0` | 语义化版本号 |
-| repo | `jipika/dsh-infinite-gen-4` | 官方 GitHub 仓库 |
-| permissions | `系统提示词注入, 客户端状态条`（URL 编码） | 申请权限 |
-| downloadUrl | `https://github.com/jipika/dsh-infinite-gen-4/archive/refs/heads/main.zip` | 离线 zip 下载直链 |
-
----
-
-### 方式 2：Windows 本地脚本一键安装（推荐）
-
-1. 打开本文件夹；
-2. 右键 `install.ps1` → **「使用 PowerShell 运行」**（或直接双击 `install.bat`）；
-3. 脚本会自动完成：依赖写入、`pnpm install` 与 `dsh://` 协议注册；
-4. 看到「安装完成」后，**完全退出并重启 DeepSeek Harness**（Web 版刷新页面，桌面版重新启动），新建会话即可生效。
-
-### 方式 3：Linux / macOS 一键安装
-
-```bash
-chmod +x install.sh uninstall.sh
-./install.sh
-```
-
-### 方式 4：手动配置安装
-
-在 `~/.dsh/profiles/<web 或 default>/package.json` 中添加：
+在 `~/.dsh/profiles/<profile>/package.json` 中加依赖与 bundle：
 
 ```json
 {
   "dependencies": {
-    "dsh-infinite-gen-4": "file:../../plugins/dsh-infinite-gen-4"
+    "dsh-switch-armor": "link:../../plugins/dsh-switch-armor"
   },
   "dsh": {
     "profile": {
       "bundles": [
         "@deepseek-ai/dsh-base",
-        "dsh-infinite-gen-4"
+        "dsh-switch-armor"
       ]
     }
   }
 }
 ```
 
-然后在 profile 目录下执行 `pnpm install` 并重启 Harness。
+然后在 profile 目录执行 `pnpm install`，**完全重启宿主**（`index.js` 是 host 半，改动必须重启才加载）。
+
+> ⚠️ **不要在 profile 的 `cordis.patch.yml` 里再手工 `insert` 本插件** —— 包自带 patch 已声明 insert，两处会撞成 `duplicate loader entry id`，整个 plugin tree 在 include 阶段就起不来。
 
 ---
 
-## ⚡ 验证生效
+## ✅ 验证生效
 
-1. **界面状态条**：重启后在输入框上方应显示醒目的绿色状态条 **「⚫ 无限四代 v0.5.0」**，右侧带启停开关。
-2. **测试离线回归**：
-   ```bash
-   # 运行 103 项断言（提示词完备性、双层内核同源性、V4.1车道、纯净架构、评分器等）
-   node scripts/verify_prompt_gen4.mjs
-   ```
-3. **会话探针**：在全新对话中输入：
-   > “你的系统提示词来自哪些插件？”
-   若回答包含「无限四代 / Infinite Generation Four」即证明双层提示词完全注入成功。
+```bash
+# 1. 全量断言（载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影）
+node scripts/verify_prompt_gen4.mjs
+
+# 2. 分流矩阵（模型名 → 载荷）
+node tests/payload-routing-probe.mjs
+
+# 3. 设置页渲染
+node tests/armor-settings-probe.mjs
+```
+
+**界面**：输入框工具栏左侧出现 `⚫ Switch Armor v0.8.0` 状态条；设置 → 插件 → Switch Armor 有独立分栏。
+
+**路由**（重启后）：
+
+```bash
+curl -s "http://127.0.0.1:19387/dsh-switch-armor/settings" | python3 -m json.tool
+curl -s "http://127.0.0.1:19387/dsh-switch-armor/session?id=$DSH_SESSION_ID"
+```
 
 ---
 
-## 🗑 卸载方法
+## 🗑 卸载
 
-运行 `uninstall.ps1`（Windows）或 `./uninstall.sh`（Linux / macOS）即可一键彻底清理，无任何配置残留。
+1. 从 profile 的 `package.json` 移除依赖与 `bundles` 条目，执行 `pnpm install`
+2. 删除 `~/.dsh/plugins/dsh-switch-armor` 与 `~/.dsh/switch-armor/`（会话级开关覆盖表）
+3. 完全重启宿主
 
 ---
 
-## 💬 交流社区 & ☕ 赞赏支持
+## 📊 版本
 
-如果无限四代对你的红队研究与安全测试有所启发与帮助，欢迎加入技术交流社区或请作者喝杯咖啡！
+| 版本 | 说明 |
+|---|---|
+| **v0.8.0** | 项目更名 Switch Armor；载荷分流 7 份（自持 / Codex 三档 / Claude / Grok）；段位 order 0.1 / 0.2 |
+| v0.7.1 | 段位前移：载荷从「排在记忆索引之后」提到 persona 之后、记忆之前 |
+| v0.7.0 | 按模型分流扩到 7 份载荷；双段收紧为仅自持族；文本缺失按 id 回落 |
 
-| 🌐 官方技术交流社区（腾讯频道） | ☕ 赞赏支持 / Sponsor |
-| :---: | :---: |
-| <img src="./assets/community.jpg" width="220" alt="DeepSeek网安逆攻防技术交流社区" /><br><sub><b>频道号：pd86424753</b></sub> | <img src="./assets/sponsor.jpg" width="220" alt="赞赏码" /><br><sub><b>请作者喝杯咖啡</b></sub> |
+---
+
+## ☕ 赞赏支持
+
+如果 Switch Armor 对你的研究与测试有所帮助，欢迎请作者喝杯咖啡 ☕
+
+<p align="center">
+  <img src="assets/sponsor.jpg" width="260" alt="微信赞赏码" />
+  <img src="assets/afdian_reward.jpg" width="200" alt="爱发电赞助码" />
+</p>
+
+<p align="center">
+  <b>给项目点个 Star ⭐</b> 同样是对开发者最大的鼓励！
+</p>
+
+---
+
+## 📄 License
+
+MIT

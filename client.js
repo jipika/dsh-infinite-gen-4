@@ -1,8 +1,8 @@
 (() => {
   try {
-    /* 无限四代 (dsh-infinite-gen-4) client half — realtime badge + dialog switch */
+    /* Switch Armor (dsh-switch-armor) client half — realtime badge + dialog switch */
     window.__ModuleLoader__.load({
-      id: "dsh-infinite-gen-4",
+      id: "dsh-switch-armor",
       factory: (require) => {
         var module = { exports: {} };
         var exports = module.exports;
@@ -13,12 +13,12 @@
         /* 模块级依赖只声明基础服务，保证 client 半边一定加载：
            - `remote.settings` 作为「可注入服务名」在运行时不保证回调（ctx.inject 版本实测拿不到），
              写进模块级又会在服务缺席时整块不加载（连状态条一起消失）→ 改为 apply 里直接读属性；
-           - 拿不到表单面时退回 host 半的自有路由 /dsh-infinite-gen-4/settings（一定可用）。 */
+           - 拿不到表单面时退回 host 半的自有路由 /dsh-switch-armor/settings（一定可用）。 */
         var inject = ["slots", "remote"];
 
         /* 开关落点：与 host 半同名的 settings namespace / 字段
            默认关闭：host 半 DEFAULT_ENABLED = false，未写 settings.yaml 时开关与状态条均为「已关闭」 */
-        var SETTINGS_NAMESPACE = "dsh-infinite-gen-4";
+        var SETTINGS_NAMESPACE = "dsh-switch-armor";
         var SETTINGS_FIELD = "enabled";
         var VERSION = "0.6.0";
 
@@ -109,7 +109,7 @@
             return clientCtx !== void 0 && clientCtx.remote !== void 0 ? clientCtx.remote.settings : void 0;
           };
           var httpHeaders = function (json) {
-            var headers = { "x-dsh-infinite-gen-4": "1" };
+            var headers = { "x-dsh-switch-armor": "1" };
             if (json) headers["content-type"] = "application/json";
             return headers;
           };
@@ -120,8 +120,8 @@
           /** 自有路由读：有会话 id 读会话维度，否则读全局（返回形态都是 { ok, enabled, … }）。 */
           var httpGet = function () {
             var url = hasSession()
-              ? "/dsh-infinite-gen-4/session?id=" + encodeURIComponent(sessionId)
-              : "/dsh-infinite-gen-4/settings";
+              ? "/dsh-switch-armor/session?id=" + encodeURIComponent(sessionId)
+              : "/dsh-switch-armor/settings";
             return fetch(url, { headers: httpHeaders(false) }).then(
               function (response) { return response.ok ? response.json() : void 0; },
               function () { return void 0; }
@@ -134,7 +134,7 @@
            */
           var httpPost = function (value, scope) {
             var session = scope !== "global" && hasSession();
-            return fetch(session ? "/dsh-infinite-gen-4/session" : "/dsh-infinite-gen-4/settings", {
+            return fetch(session ? "/dsh-switch-armor/session" : "/dsh-switch-armor/settings", {
               method: "POST",
               headers: httpHeaders(true),
               body: JSON.stringify(session ? { sessionId: sessionId, enabled: value } : { enabled: value })
@@ -227,7 +227,7 @@
            */
           var writePatch = function (patch, scope) {
             var session = scope !== "global" && hasSession();
-            return fetch(session ? "/dsh-infinite-gen-4/session" : "/dsh-infinite-gen-4/settings", {
+            return fetch(session ? "/dsh-switch-armor/session" : "/dsh-switch-armor/settings", {
               method: "POST",
               headers: httpHeaders(true),
               body: JSON.stringify(session ? { sessionId: sessionId, enabled: patch.enabled } : patch)
@@ -289,7 +289,7 @@
 
         /**
          * 载荷路由状态源（mode / manualPayload / payloads 清单 / 当前生效项）。
-         * 只走 host 自有路由 /dsh-infinite-gen-4/settings（GET 读 / POST 写）——
+         * 只走 host 自有路由 /dsh-switch-armor/settings（GET 读 / POST 写）——
          * 表单面对多字段的支持取决于 entry schema 是否 volatile，自有路由是无条件可用的那条。
          * 与 setting 同款：外部 store 缓存 + useSyncExternalStore 稳定引用。
          */
@@ -305,7 +305,7 @@
             listeners.forEach(function (listener) { listener(); });
           };
           var sync = function () {
-            return fetch("/dsh-infinite-gen-4/settings", { headers: { "x-dsh-infinite-gen-4": "1" } }).then(
+            return fetch("/dsh-switch-armor/settings", { headers: { "x-dsh-switch-armor": "1" } }).then(
               function (response) { return response.ok ? response.json() : void 0; },
               function () { return void 0; }
             ).then(function (payload) {
@@ -323,9 +323,9 @@
           };
           /** 写路由字段：成功后 re-sync 拉回权威值（host 可能钳制/回落）。 */
           var write = function (patch) {
-            return fetch("/dsh-infinite-gen-4/settings", {
+            return fetch("/dsh-switch-armor/settings", {
               method: "POST",
-              headers: { "x-dsh-infinite-gen-4": "1", "content-type": "application/json" },
+              headers: { "x-dsh-switch-armor": "1", "content-type": "application/json" },
               body: JSON.stringify(patch)
             }).then(
               function (response) { return response.ok ? response.json() : void 0; },
@@ -381,13 +381,13 @@
           var scoped = setting.sessionScope();
           var scopeWord = scoped ? "本会话" : "全局";
           var title = !available
-            ? "开关通道不可用（" + (snap.reason || "原因未明") + "）：只读显示 host 投影真值；也可在 profile 的 cordis.patch.yml 里改 dsh-infinite-gen-4 的 config.enabled"
+            ? "开关通道不可用（" + (snap.reason || "原因未明") + "）：只读显示 host 投影真值；也可在 profile 的 cordis.patch.yml 里改 dsh-switch-armor 的 config.enabled"
             : snap.status === "ready" && !snap.writable
               ? "开关不可写：" + (snap.reason || "宿主拒绝了写入")
               : checked
-                ? "无限四代注入已开启（" + scopeWord + "）— 点击关闭" + (scoped ? "；⌥ 点击切全局" : "")
-                : "无限四代注入已关闭（" + scopeWord + "）— 点击开启" + (scoped ? "；⌥ 点击切全局" : "");
-          var ariaLabel = props && typeof props.ariaLabel === "string" ? props.ariaLabel : "无限四代注入开关";
+                ? "Switch Armor注入已开启（" + scopeWord + "）— 点击关闭" + (scoped ? "；⌥ 点击切全局" : "")
+                : "Switch Armor注入已关闭（" + scopeWord + "）— 点击开启" + (scoped ? "；⌥ 点击切全局" : "");
+          var ariaLabel = props && typeof props.ariaLabel === "string" ? props.ariaLabel : "Switch Armor注入开关";
 
           var onClick = function (event) {
             if (locked) return;
@@ -422,7 +422,7 @@
          * 输入框上方状态条：内核状态 + 命中域/载荷计数 + 注入总开关。
          * 开关关闭时状态条变灰并显示「已关闭」，提示注入已停用。
          */
-        /* ── 设置页「无限四代」tab ────────────────────────────────────────────────
+        /* ── 设置页「Switch Armor」tab ────────────────────────────────────────────────
            挂 settings.plugins.tab，id 必须是插件包名（宿主按包名把 tab 归到本插件那一行，
            见 dsh-memguard 的同款写法）。内容 = 载荷路由：自动（按模型）/ 手动（指定一份）。
            所有写操作都走 host 自有路由，且带超时兜底 —— host 侧 promise 实测可能永不
@@ -469,7 +469,7 @@
             react.createElement(
               "div",
               { className: "dsh-armor-s-desc" },
-              "自动 = 按当前模型身份选载荷（GPT 系走 Codex 三档，Claude / Grok 各走对应稿，DeepSeek · GLM 等其余走 dsh 档）；手动 = 固定使用指定的那一份。想用旧版无限四代自持契约稿，选 dsh-gen4。"
+              "自动 = 按当前模型身份选载荷（GPT 系走 Codex 三档，Claude / Grok 各走对应稿，DeepSeek · GLM 等其余走 dsh 档）；手动 = 固定使用指定的那一份。想用旧版Switch Armor自持契约稿，选 dsh-gen4。"
             ),
             react.createElement(
               "div",
@@ -554,14 +554,14 @@
           var showVerdict = enabled && !running && lastVerdictRef.current !== null &&
             Date.now() < flashUntilRef.current;
 
-          var text = "无限四代 v" + VERSION;
+          var text = "Switch Armor v" + VERSION;
           var phase = "idle";
           // 状态条视觉不变，作用域只在 tooltip 里区分（本会话 / 全局）
           var scopeLabel = sessionId !== void 0 ? "本会话" : "全局";
 
           if (!enabled) {
             phase = "off";
-            text = "无限四代 已关闭";
+            text = "Switch Armor 已关闭";
           } else if (running) {
             phase = "running";
             text = "执行中…";
@@ -586,8 +586,8 @@
             }
           }
           var badgeTitle = enabled
-            ? "无限四代 v" + VERSION + " — " + scopeLabel + "注入开启中" + payloadLabel
-            : "无限四代 — " + scopeLabel + "已关闭（系统提示词零残留）";
+            ? "Switch Armor v" + VERSION + " — " + scopeLabel + "注入开启中" + payloadLabel
+            : "Switch Armor — " + scopeLabel + "已关闭（系统提示词零残留）";
 
           return react.createElement(
             "div",
@@ -616,15 +616,15 @@
               order: 30
             }, ArmorDock)
           );
-          // 设置 → 内置插件 →「无限四代」tab：载荷路由（自动 / 手动）。
+          // 设置 → 内置插件 →「Switch Armor」tab：载荷路由（自动 / 手动）。
           // id 必须是插件包名 —— 宿主按包名把 tab 归到本插件那一行。
           ctx.slots.inject("settings.plugins.tab", () =>
             ctx.slots.register(
               {
                 name: "settings.plugins.tab",
-                id: "dsh-infinite-gen-4",
+                id: "dsh-switch-armor",
                 order: 20,
-                label: function () { return "无限四代"; }
+                label: function () { return "Switch Armor"; }
               },
               ArmorSettings
             )
@@ -649,16 +649,16 @@
               if (typeof off === "function") off();
               if (typeof unbind === "function") unbind();
             };
-          }, "infinite-gen-4: settings form binding");
+          }, "switch-armor: settings form binding");
         }
 
-        exports.name = "dsh-infinite-gen-4";
+        exports.name = "dsh-switch-armor";
         exports.inject = inject;
         exports.apply = apply;
         return module.exports;
       }
     });
   } catch (err) {
-    console.warn('[AI Client Sandbox] dsh-infinite-gen-4 runtime error:', err);
+    console.warn('[AI Client Sandbox] dsh-switch-armor runtime error:', err);
   }
 })();

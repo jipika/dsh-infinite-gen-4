@@ -1,6 +1,6 @@
-# DeepSeek Harness Plugin — 无限四代 / dsh-infinite-gen-4 (v0.7.0)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.0)
 
-网络安全红队（Red-Teaming）测试插件，项目名：**无限四代（Infinite Generation Four）**。
+网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
 **「零工具面纯净直出 + 双层提示词协同注入 + 实时会话投影」**架构。
 
@@ -59,14 +59,14 @@
   - **文本缺失按 id 回落**（v0.7.0）：`PAYLOAD_FALLBACKS` 让 claude / grok / GPT 三档回落到
     `dsh`，`dsh` 回落到 `dsh-gen4`。旧实现硬绑 `PROMPT_TEXT`（原自持稿），在 7 份载荷的表下
     会让「claude 文件缺失」静默注入一份自持稿 —— 属错误载荷而非降级。
-- **设置页 tab（v0.7.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-infinite-gen-4`，
+- **设置页 tab（v0.7.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-switch-armor`，
   宿主按包名把 tab 归到本插件那一行），提供「自动 / 手动」模式切换，以及手动模式下的
   载荷单选（七份：dsh / dsh-gen4 / gpt61 / gpt6 / gpt56 / claude / grok）。写入走 host 自有路由
-  `/dsh-infinite-gen-4/settings`，读走同一路由的 GET（返回 `mode` / `manualPayload` /
+  `/dsh-switch-armor/settings`，读走同一路由的 GET（返回 `mode` / `manualPayload` /
   `payloads` / `resolvedPayload`）。
 - **双层提示词协同注入（Dual-Layer Injection）**：
-  - `infinite-gen-4:global-system-prompt`（order 0.1）→ 载荷由分流决定（见上）
-  - `infinite-gen-4:dual-layer-reinforce`（order 0.2）→ **与主槽位同一份文本**，
+  - `switch-armor:global-system-prompt`（order 0.1）→ 载荷由分流决定（见上）
+  - `switch-armor:dual-layer-reinforce`（order 0.2）→ **与主槽位同一份文本**，
     仅自持族（`dsh` / `dsh-gen4`）非空；外部五份（Codex 三档 / Claude / Grok）恒为空串。
   - 两份自持稿（`prompts/dsh-unrestricted.md` 与 `prompts/infinite-gen-4.md`）各自与
     其 `.1-flash` 镜像同源同构、SHA256 完全一致；由 `index.js` 的 `DUAL_LAYER_INJECTION`
@@ -74,7 +74,7 @@
   - 载荷中的 `{{...}}` 非内置变量由 `index.js` 做安全转义，避免模板解析器抛错
     （六份外部载荷当前 0 处 `{{`，仍过同一条正则，属零成本防未来改动）。
 - **对话框热开关（Dialog Switch，v0.5.0）**：客户端状态条右侧的内联开关写 settings
-  namespace `dsh-infinite-gen-4` 的 `enabled` 字段（用户层 → `~/.dsh/settings.yaml`，热重载）。
+  namespace `dsh-switch-armor` 的 `enabled` 字段（用户层 → `~/.dsh/settings.yaml`，热重载）。
   两段提示词注册为**条件段**：关闭时 `text` 求值函数返回空串，`dsh-system-prompt` 的
   `renderPrompt()` 过滤掉它，系统提示词零残留；生效于下一个模型步，无需重启。
   **默认关闭**：`DEFAULT_ENABLED = false`，未拨动开关时 `settings.yaml` 里不会出现该分节。
@@ -85,7 +85,7 @@
   不存在可拒绝的请求类别。
 - **评分器与会话投影**：开头窗口（160）判拒 + REFUSAL / FALLBACK / SAFE / RISK 四类标记
   + 域命中检测，驱动客户端状态条展示。该投影是**评分器**，不参与系统提示词注入。
-- **客户端实时状态条**：在输入框上方挂载 `⚫ 无限四代 v0.5.0` 动态状态条（含命中域/载荷数显示）。
+- **客户端实时状态条**：在输入框上方挂载 `⚫ Switch Armor v0.5.0` 动态状态条（含命中域/载荷数显示）。
   状态条与开关共用一张注入的样式表（`#dsh-armor-style`），外观全部来自 DSH 设计 token
   （`--dsw-alias-*`），状态由 `data-phase` / `aria-checked` 驱动，**组件内不写任何 inline style**
   —— 因此不会漏出浏览器默认的黑色 outline，深/浅主题自动跟随。
@@ -94,7 +94,7 @@
   （配 `state-error-secondary` 底），开关关闭 = 灰态 `label-tertiary` + `bg-layer-2`。
 - **客户端状态条的位置**：挂 `conversation.input.left`（输入框工具栏左侧席位，`id: armor`、
   `order: 30`），**不是**输入框上方的 dock。
-- **profile 元数据工具**：`infinite_gen4_profile` 返回内核版本、注入槽位清单、载荷路由状态
+- **profile 元数据工具**：`switch_armor_profile` 返回内核版本、注入槽位清单、载荷路由状态
   （`payloadRouting.mode` / `manualPayload` / `payloads` / `rules`）与能力标记。
 
 ## 注入面文件
@@ -116,11 +116,11 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 
 | 位置 | 用途 |
 |---|---|
-| `index.js` → `SETTINGS_NAMESPACE = "dsh-infinite-gen-4"` | host 半注册的 settings namespace |
+| `index.js` → `SETTINGS_NAMESPACE = "dsh-switch-armor"` | host 半注册的 settings namespace |
 | `index.js` → `enabled` / `mode` / `manualPayload` | 三个字段（均为 `.volatile()`） |
 | `client.js` → `createSettingSource()` / `createRoutingSource()` | 客户端两个状态源：开关、载荷路由 |
-| `~/.dsh/infinite-gen-4/sessions.json` | 会话级开关覆盖（只存 boolean，`mode` 不做会话级） |
-| profile patch → `dsh-infinite-gen-4.config.*` | 持久化落点（`settings.update` 写回） |
+| `~/.dsh/switch-armor/sessions.json` | 会话级开关覆盖（只存 boolean，`mode` 不做会话级） |
+| profile patch → `dsh-switch-armor.config.*` | 持久化落点（`settings.update` 写回） |
 
 | 探针 | 覆盖 |
 |---|---|
@@ -138,17 +138,18 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | 版本 | 说明 |
 |---|---|
 | v0.3.0 | 双层注入首版（通用内核槽位 + 战场实测层槽位） |
-| v0.4.0 | 双层注入收敛为同源同构内核；注入槽位统一为 `infinite-gen-4:*`；内核载荷与强化镜像逐字一致 |
+| v0.4.0 | 双层注入收敛为同源同构内核；注入槽位统一为 `switch-armor:*`；内核载荷与强化镜像逐字一致 |
 | v0.5.0 | 新增对话框热开关：条件段 + settings namespace，**默认关闭**；关闭时零残留；状态条联动灰态；profile 工具回报开关状态 |
 | **v0.6.0** | 按模型分流注入载荷：GPT 系走三份 Codex 载荷（**按 model 名的版本号语义解析**，容忍各种写法，单段注入），其余走 DSH 自持载荷（双段）；新增 `mode`(auto/manual) + `manualPayload` 配置与设置页 tab |
 | **v0.7.0** | 融入 Keysmith 系列载荷：自持档 `dsh` 换成 keysmith 短稿，原 7739B 契约稿降为可切换的备用档 `dsh-gen4`；新增 `claude`（`^claude`）与 `grok`（`^grok`）两条家族锚定分支；载荷表 4 → 7 项；**双段收紧为仅自持族**，镜像槽位改为跟随主槽位的同一份文本；文本缺失改为**按 id 回落**（`PAYLOAD_FALLBACKS`） |
-| **v0.7.1** | **段位前移**：载荷 order 由 100/200 改为 **0.1/0.2**，从「排在 19.5k 记忆索引之后」提到 `persona(0)` 之后、`dsh-memory(1)` 之前 —— 修复「记忆跑到我们的提示词前面」 |
+| v0.7.1 | **段位前移**：载荷 order 由 100/200 改为 **0.1/0.2**，从「排在 19.5k 记忆索引之后」提到 `persona(0)` 之后、`dsh-memory(1)` 之前 |
+| **v0.8.0** | **项目定名 Switch Armor**；载荷分流 7 份；段位 order 0.1/0.2；文档全面重写 |
 
 ## Local verification
 
 ```powershell
 node --check index.js && node --check client.js
-node scripts/verify_prompt_gen4.mjs    # 240 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
+node scripts/verify_prompt_gen4.mjs    # 247 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
 node tests/payload-routing-probe.mjs   # 104 项：分流矩阵 + 单段/双段 + 手动模式 + 400 分支
 node tests/armor-settings-probe.mjs    # 25 项：设置页 9 按钮（2 模式 + 7 载荷）+ 写入路径
 node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染
@@ -159,11 +160,11 @@ node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染
 ```powershell
 # profiles/default/package.json
 "dependencies": {
-  "dsh-infinite-gen-4": "file:../../plugins/dsh-infinite-gen-4"
+  "dsh-switch-armor": "file:../../plugins/dsh-switch-armor"
 },
 "dsh": {
   "profile": {
-    "bundles": ["@deepseek-ai/dsh-base", "dsh-infinite-gen-4"]
+    "bundles": ["@deepseek-ai/dsh-base", "dsh-switch-armor"]
   }
 }
 ```

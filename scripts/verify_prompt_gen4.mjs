@@ -1,4 +1,4 @@
-// 无限四代 v0.5.0 纯净破甲版离线确定性回归校验（无需 API Key）
+// Switch Armor v0.5.0 纯净破甲版离线确定性回归校验（无需 API Key）
 // 检查：注入载荷契约与身份 / 同源载荷逐字一致性 / 注入槽位 / 零工具面纯净架构 /
 //       package.json 版本 / 评分器 / 用例库 / 品牌纯净度
 // 用法：node scripts/verify_prompt_gen4.mjs [--json]
@@ -147,14 +147,14 @@ for (const file of BRAND_CLEAN_FILES) {
 // ---- 4. index.js 注入槽位与宿主外壳 ----
 const indexSrc = existsSync(INDEX_PATH) ? readFileSync(INDEX_PATH, "utf8") : "";
 check(indexSrc.length > 0, "index.js 存在且非空");
-mustContain(indexSrc, 'export const name = "dsh-infinite-gen-4"', "插件名 dsh-infinite-gen-4");
+mustContain(indexSrc, 'export const name = "dsh-switch-armor"', "插件名 dsh-switch-armor");
 mustContain(indexSrc, '"./prompts/dsh-unrestricted.md"', "载入自持档 dsh 载荷（Keysmith 短稿）");
 mustContain(indexSrc, '"./prompts/infinite-gen-4.md"', "载入备用自持档 dsh-gen4 载荷");
 mustContain(indexSrc, '"./prompts/claude-keysmith.md"', "载入 Claude 载荷");
 mustContain(indexSrc, '"./prompts/grok-keysmith.md"', "载入 Grok 载荷");
-mustContain(indexSrc, "infinite-gen-4:global-system-prompt", "系统提示词主槽位注册");
-mustContain(indexSrc, "infinite-gen-4:dual-layer-reinforce", "系统提示词镜像槽位代码保留");
-// 段位必须落在 persona(0) 与 dsh-memory(1) 之间的夹缝：这是 0.7.1 的核心修复，
+mustContain(indexSrc, "switch-armor:global-system-prompt", "系统提示词主槽位注册");
+mustContain(indexSrc, "switch-armor:dual-layer-reinforce", "系统提示词镜像槽位代码保留");
+// 段位必须落在 persona(0) 与 dsh-memory(1) 之间的夹缝：这是 v0.7.1 引入的核心修复，
 // 把载荷从 order 100（排在 19.5k 记忆索引之后）提到 persona 之后、记忆之前。
 mustContain(indexSrc, "const PRIMARY_SECTION_ORDER = 0.1", "段位: 主槽位 order = 0.1（persona 之后、记忆之前）");
 mustContain(indexSrc, "const REINFORCE_SECTION_ORDER = 0.2", "段位: 镜像槽位 order = 0.2");
@@ -173,7 +173,7 @@ mustContain(indexSrc, "service.configure(", "表单面: configure 把 entry 挂�
 mustContain(indexSrc, "unwrapConfigValue", "表单面: volatile 值解包读法");
 mustContain(indexSrc, "liveEntryConfig()", "表单面: 每次重读 fiber.config，不缓存 volatile 值");
 // 自有写通道兜底：webServer 前缀路由 + 内存覆盖（表单面写不动时开关仍可用）
-mustContain(indexSrc, '"/dsh-infinite-gen-4"', "自有路由: webServer 前缀注册");
+mustContain(indexSrc, '"/dsh-switch-armor"', "自有路由: webServer 前缀注册");
 mustContain(indexSrc, "handleSettingsRoute", "自有路由: 读写处理器");
 mustContain(indexSrc, "runtimeOverride", "自有路由: 写不动时的内存覆盖");
 mustContain(indexSrc, 'ctx.inject(["webServer"]', "自有路由: webServer 可选注入");
@@ -181,9 +181,9 @@ mustContain(indexSrc, 'ctx.inject(["webServer"]', "自有路由: webServer 可�
 mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值解析");
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
-mustContain(indexSrc, '"/dsh-infinite-gen-4/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.7.1"', "内核版本 0.7.1");
-mustContain(indexSrc, "infinite_gen4_profile", "保留 profile 元数据工具");
+mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
+mustContain(indexSrc, 'pluginVersion: "0.8.0"', "内核版本 0.8.0");
+mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
 
@@ -349,33 +349,33 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
-check(pkg.name === "dsh-infinite-gen-4", "package.json name = dsh-infinite-gen-4");
-check(pkg.version === "0.7.1", "package.json version = 0.7.1");
-check(pkg.dsh?.id === "dsh-infinite-gen-4", "dsh.id = dsh-infinite-gen-4");
-check(pkg.dsh?.version === "0.7.1", "dsh.version = 0.7.1");
+check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
+check(pkg.version === "0.8.0", "package.json version = 0.8.0");
+check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
+check(pkg.dsh?.version === "0.8.0", "dsh.version = 0.8.0");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 6. 客户端状态条版本 ----
 const clientSrc = existsSync(join(ROOT, "client.js")) ? readFileSync(join(ROOT, "client.js"), "utf8") : "";
-mustContain(clientSrc, '"无限四代 v" + VERSION', "小绿标文案 = 无限四代 v{VERSION}");
-mustAbsent(clientSrc, "无限四代 v0.3.0", "小绿标无 v0.3.0 残留");
+mustContain(clientSrc, '"Switch Armor v" + VERSION', "小绿标文案 = Switch Armor v{VERSION}");
+mustAbsent(clientSrc, "Switch Armor v0.3.0", "小绿标无 v0.3.0 残留");
 mustAbsent(clientSrc, "双层注入开启中", "状态条不再宣称双层注入");
 // 客户端开关通道（0.2.x）：模块级只声明基础服务（保证加载）+ 表单面可用时 mutate + 自有路由兜底
 mustContain(clientSrc, '["slots", "remote"]', "客户端: 模块级依赖只含基础服务（保证加载）");
 mustContain(clientSrc, "settings/document-updated", "客户端: 订阅设置变更事件刷新");
 mustContain(clientSrc, "api.mutate(SETTINGS_NAMESPACE", "客户端: 表单面可用时 mutate 写 entry config");
-mustContain(clientSrc, '"/dsh-infinite-gen-4/settings"', "客户端: 自有路由兜底通道");
-mustContain(clientSrc, "x-dsh-infinite-gen-4", "客户端: 自有路由令牌头");
+mustContain(clientSrc, '"/dsh-switch-armor/settings"', "客户端: 自有路由兜底通道");
+mustContain(clientSrc, "x-dsh-switch-armor", "客户端: 自有路由令牌头");
 mustContain(clientSrc, "markUnavailable", "客户端: 不可用时保留原因供 tooltip 定位");
 // 客户端会话开关：投影下发 sessionId → useSession 切维度，⌥ 点击走 setGlobal
 mustContain(clientSrc, "useSession", "客户端: 会话 id 同步入口");
 mustContain(clientSrc, "setGlobal", "客户端: ⌥ 点击切全局");
 mustContain(clientSrc, "altKey", "客户端: ⌥ 修饰键判定");
-mustContain(clientSrc, "/dsh-infinite-gen-4/session?id=", "客户端: 会话维度读路由");
+mustContain(clientSrc, "/dsh-switch-armor/session?id=", "客户端: 会话维度读路由");
 mustAbsent(clientSrc, "settingsScope", "客户端: 旧 settingsScope 通道已移除");
 // 设置页 tab：载荷路由（自动 / 手动）—— id 必须是插件包名，宿主按包名归位
 mustContain(clientSrc, "settings.plugins.tab", "客户端: 挂设置页插件 tab");
-mustContain(clientSrc, '"dsh-infinite-gen-4"', "客户端: tab 归属用插件包名");
+mustContain(clientSrc, '"dsh-switch-armor"', "客户端: tab 归属用插件包名");
 mustContain(clientSrc, "ArmorSettings", "客户端: 设置页组件存在");
 mustContain(clientSrc, "createRoutingSource", "客户端: 载荷路由状态源");
 mustContain(clientSrc, "setMode", "客户端: 模式切换写入");
