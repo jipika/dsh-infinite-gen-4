@@ -1,7 +1,13 @@
 # 🛡️ Switch Armor
 
 <p align="center">
-  <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20%E5%94%A4%E8%B5%B7%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
+  <img src="assets/banner.png" alt="Switch Armor — DeepSeek Harness Prompt Injection Engine" width="100%" />
+</p>
+
+<p align="center">
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.0&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+    <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20%E5%94%A4%E8%B5%B7%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
+  </a>
   <img src="https://img.shields.io/badge/version-0.8.0-blue?style=for-the-badge" alt="v0.8.0" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT" />
 </p>
