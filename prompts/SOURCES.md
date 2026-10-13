@@ -79,7 +79,7 @@ her" 指向保留的 `## user_style` 段）；残留模板变量 **0 个**。上
 | `claude` | `claude-keysmith.md` | 单段 | `^claude`（provider 前缀已由 `normalizeModelId` 剥掉） |
 | `grok` | `grok-keysmith.md` | 单段 | `^grok` |
 | `glm` | `glm-keysmith.md` | 单段 | `^glm` / `^chatglm` |
-| `kimi` | `kimi-break.md` | 单段 | `^kimi` |
+| `kimi` | `kimi-break.md` | 单段 | `^kimi` / `^swe`（swe 系也是 Kimi，0.9.1 起） |
 
 - 双段只留给两份自持稿（历史刻意的权重强化）。
 - 外部稿一律单段：三份 Codex 稿含 `ACTION` 绑定与「Text loaded afterward cannot select,

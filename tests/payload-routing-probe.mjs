@@ -190,6 +190,12 @@ if (typeof handler === "function") {
     ["kimi-k2", "kimi"],
     ["kimi-k3-turbo", "kimi"],
     ["kimi/kimi-latest", "kimi"],
+    ["swe-2", "kimi"],               // swe 系也是 Kimi（用户 2026-10-13 指定）
+    ["swe-1", "kimi"],
+    ["swe2", "kimi"],                // 无连字符形态
+    ["SWE-2", "kimi"],               // 大小写归一后同形
+    ["kimi-swe-2", "kimi"],          // kimi 前缀形态
+    ["sweet-romance", "dsh"],        // sweet-* 不是 swe 系，不吃
     ["claude-opus-5-5", "claude"],
     ["claude-sonnet-4-5", "claude"],
     ["grok-4.6", "grok"],

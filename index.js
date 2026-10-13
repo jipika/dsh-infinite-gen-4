@@ -231,8 +231,11 @@ function matchPayloadId(model) {
   // glm 家族（glm-5.3-flash / glm-5.3-flashx / glm-4* / chatglm*）：ZCode 载荷
   // 本就是为 GLM 写的（zcode-keysmith 面向 ZCode，即 GLM 的 CLI）。
   if (/^(?:glm|chatglm)/.test(id)) return "glm";
-  // kimi 家族（kimi-k2* / kimi-k3* / moonshot 代理剥前缀后同形）
-  if (/^kimi/.test(id)) return "kimi";
+  // kimi 家族（kimi-k2* / kimi-k3* / moonshot 代理剥前缀后同形）。
+  // `swe` 系（swe-1 / swe-2…）同属 Kimi 系 —— 用户 2026-10-13 指定，裸名（`swe-2`，
+  // 无 kimi 前缀）也归这里。`swe` 后必须跟数字/下划线/连字符：`swe[\d_-]` 让
+  // `sweet-*` 这类前缀撞名天然排除（裸 `swe` 也不吃）。
+  if (/^(?:kimi|swe[\d_-])/.test(id)) return "kimi";
   // ── 版本不可解析：先判家族，再按家族特征保守兜底 ────────────────────────
   if (!isGptFamily(id)) return "dsh";
   // o 系 / codex 系历史上是 5.x 一脉
@@ -251,9 +254,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.9.0";
+const VERSION = "0.9.1";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.9.0"
+//   pluginVersion: "0.9.1"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
