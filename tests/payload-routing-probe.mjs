@@ -37,13 +37,13 @@ const check = (ok, label, detail = "") => {
   (ok ? passes : failures).push(`${label}${!ok && detail ? " — " + detail : ""}`);
 };
 
-// ── 1. 载荷文件确实读进来了（七份都非空） ───────────────────────────────────
+// ── 1. 载荷文件确实读进来了（九份都非空） ───────────────────────────────────
 const payloads = mod.__testPayloads ?? undefined;
 check(typeof mod.apply === "function", "index.js 导出 apply");
 check(Array.isArray(mod.__testPayloadIds), "index.js 导出载荷 id 白名单");
 check(JSON.stringify(mod.__testPayloadIds)
-  === JSON.stringify(["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"]),
-  "载荷 id 白名单 = dsh/dsh-gen4/gpt61/gpt6/gpt56/claude/grok", JSON.stringify(mod.__testPayloadIds));
+  === JSON.stringify(["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok", "glm", "kimi"]),
+  "载荷 id 白名单 = dsh/dsh-gen4/gpt61/gpt6/gpt56/claude/grok/glm/kimi", JSON.stringify(mod.__testPayloadIds));
 
 // 直接核对磁盘上的六份外部载荷（GPT 三份 + Keysmith 三份）与源文件逐字一致
 const sha = (p) => createHash("sha256").update(readFileSync(p)).digest("hex");
@@ -54,6 +54,10 @@ const SOURCES = {
   "prompts/dsh-unrestricted.md": "6b6e145b696d5a7edd05452c561d514d2b4fbb60c319a1af85c394e39032e78f",
   "prompts/claude-keysmith.md": "2792d33890ed06948eecfc4eb8371db6b6aa5e8111b1623424100e077bcb32ca",
   "prompts/grok-keysmith.md": "3c669118d67690856f3ac11cd0f2beb687aa6e718dc76ed3f54c0751e01e48c9",
+  // glm 字节保真（= 上游 zcode-keysmith 的 examples/system-role.md）
+  "prompts/glm-keysmith.md": "30e7de01b1a453d38cb1fa38bc8f4bb26eeaf8eccafada1aa178df1a1cf1c9e1",
+  // kimi 是适配稿（非字节保真），锁适配后的哈希防手滑改动
+  "prompts/kimi-break.md": "72fd562aad820ef5ab6b32386e4b4769402d06a741ece86eecf54b913209d176",
 };
 for (const [rel, want] of Object.entries(SOURCES)) {
   const got = sha(join(PLUGIN_ROOT, rel));
@@ -110,6 +114,8 @@ const SIG = {
   gpt56: "SINGLE-PASS TASK COMPILER",
   claude: "# Project rules",
   grok: "<|im_start|>system",
+  glm: "You're Pier. Ethan named you",
+  kimi: "Old ink, her pulse",
 };
 const identify = (text) => {
   if (text.length === 0) return "empty";
@@ -117,6 +123,8 @@ const identify = (text) => {
   // `# Project rules` 与自持稿的 `# Project rules`（若将来合并）也不能混 —— 先判最特异的三条
   if (text.includes(SIG.grok)) return "grok";
   if (text.includes(SIG.claude)) return "claude";
+  if (text.includes(SIG.kimi)) return "kimi";
+  if (text.includes(SIG.glm)) return "glm";
   if (text.includes(SIG.gpt56)) return "gpt56";
   if (text.includes(SIG.gpt61)) {
     // astra 与 6.1 都以 INJECTED REVISION ACTION 开头，用 astra 独有的段名区分
@@ -173,8 +181,15 @@ if (typeof handler === "function") {
     ["gpt-7-future", "gpt61"],
     ["gpt-10", "gpt61"],           // 未来 10 代（两位主版本，不被当粘连拆）
     ["deepseek-v4.1-flash", "dsh"],
-    ["glm-5.3", "dsh"],
-    ["glm-5.3-flash", "dsh"],
+    ["glm-5.3", "glm"],
+    ["glm-5.3-flash", "glm"],
+    ["glm-5.3-flashx", "glm"],
+    ["glm-4.6", "glm"],
+    ["chatglm-6b", "glm"],           // chatglm 前缀同族
+    ["zai/glm-4.6", "glm"],          // provider 前缀剥掉后同路
+    ["kimi-k2", "kimi"],
+    ["kimi-k3-turbo", "kimi"],
+    ["kimi/kimi-latest", "kimi"],
     ["claude-opus-5-5", "claude"],
     ["claude-sonnet-4-5", "claude"],
     ["grok-4.6", "grok"],

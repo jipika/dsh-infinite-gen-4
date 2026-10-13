@@ -1,6 +1,6 @@
 {
   "name": "dsh-switch-armor",
-  "version": "0.8.3",
+  "version": "0.9.0",
   "description": "Switch Armor — DeepSeek Harness 的系统提示词注入引擎：按会话实际模型在 7 份交付契约间自动分流，段位可控、会话级开关、实时状态投影。",
   "license": "MIT",
   "keywords": [
@@ -43,7 +43,7 @@
   "dsh": {
     "id": "dsh-switch-armor",
     "name": "Switch Armor",
-    "version": "0.8.3",
+    "version": "0.9.0",
     "repo": "jipika/dsh-switch-armor",
     "permissions": "系统提示词注入, 客户端状态条, 用户设置（dsh-switch-armor 命名空间）",
     "bundle": {

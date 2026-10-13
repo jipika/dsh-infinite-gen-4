@@ -42,6 +42,15 @@ const GPT61_URL = new URL("./prompts/gpt-6.1-sol.md", import.meta.url);
 const GPT56_URL = new URL("./prompts/gpt-5.6-sol.md", import.meta.url);
 const CLAUDE_KS_URL = new URL("./prompts/claude-keysmith.md", import.meta.url);
 const GROK_KS_URL = new URL("./prompts/grok-keysmith.md", import.meta.url);
+// glm：ZCode 系载荷（ZCode 是 GLM 的 CLI），来自 Jia-Ethan/zcode-keysmith ·
+// examples/system-role.md（MIT），字节原样收编（sha256 见 prompts/SOURCES.md）。
+const GLM_KS_URL = new URL("./prompts/glm-keysmith.md", import.meta.url);
+// kimi：来自 YD-233/kimi-break · SYSTEM.md（MIT）。上游是 Kimi Code 的整份 SYSTEM.md
+// 替换，含 12 个 Kimi Code 宿主模板变量（${os}/${cwd}/${agents_md}…）与三段宿主专属段
+// （Working Environment / Context Management / Project Information）—— DSH 不展开这些
+// 变量，直接注入会让模型把模板占位符当待填槽位。收编时剥掉占位符行与那三段，
+// 破甲内核逐字保留；上游原文 sha256 与适配说明见 prompts/SOURCES.md。
+const KIMI_BRK_URL = new URL("./prompts/kimi-break.md", import.meta.url);
 
 /**
  * 载荷清单：id → { label, text }。
@@ -65,12 +74,14 @@ function loadPayloadTable() {
     gpt56: { label: "GPT-5.6 Sol（Codex 载荷）", text: read(GPT56_URL) },
     claude: { label: "Claude（Keysmith 载荷）", text: read(CLAUDE_KS_URL) },
     grok: { label: "Grok（Keysmith 载荷）", text: read(GROK_KS_URL) },
+    glm: { label: "GLM（ZCode 载荷）", text: read(GLM_KS_URL) },
+    kimi: { label: "Kimi（kimi-break 载荷）", text: read(KIMI_BRK_URL) },
   };
 }
 
 const PAYLOADS = loadPayloadTable();
 /** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
-const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"];
+const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok", "glm", "kimi"];
 /** 自持族：只有它们走双段注入（主槽位 + 镜像槽位同源逐字一致）。 */
 const NATIVE_PAYLOAD_IDS = ["dsh", "dsh-gen4"];
 /**
@@ -103,6 +114,8 @@ const PAYLOAD_FALLBACKS = {
   gpt56: "dsh",
   claude: "dsh",
   grok: "dsh",
+  glm: "dsh",
+  kimi: "dsh",
 };
 /**
  * GPT 家族判定：**锚定开头**，只认自家命名，不吃 `my-gpt-6-clone` 这类仿冒名。
@@ -209,12 +222,17 @@ function matchPayloadId(model) {
   if (id.length === 0) return "dsh";
   const version = extractGptVersion(id);
   if (version !== undefined) return payloadForVersion(version);
-  // ── 归一化后仍带 provider 前缀的家族（claude / grok）────────────────────
+  // ── 归一化后仍带 provider 前缀的家族（claude / grok / glm / kimi）──────────
   // 锚定开头，与 GPT 家族同一套做法（`GPT_FAMILY_RE` 同样是 `^` 锚定，不吃
   // `my-gpt-6-clone` 这类仿冒名）。归一化已剥掉 `vendor/`，所以
   // `anthropic/claude-opus-5-5` 与 `claude-opus-5-5` 在这里走同一条路。
   if (/^claude/.test(id)) return "claude";
   if (/^grok/.test(id)) return "grok";
+  // glm 家族（glm-5.3-flash / glm-5.3-flashx / glm-4* / chatglm*）：ZCode 载荷
+  // 本就是为 GLM 写的（zcode-keysmith 面向 ZCode，即 GLM 的 CLI）。
+  if (/^(?:glm|chatglm)/.test(id)) return "glm";
+  // kimi 家族（kimi-k2* / kimi-k3* / moonshot 代理剥前缀后同形）
+  if (/^kimi/.test(id)) return "kimi";
   // ── 版本不可解析：先判家族，再按家族特征保守兜底 ────────────────────────
   if (!isGptFamily(id)) return "dsh";
   // o 系 / codex 系历史上是 5.x 一脉
@@ -233,9 +251,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.8.3";
+const VERSION = "0.9.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.8.3"
+//   pluginVersion: "0.9.0"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。

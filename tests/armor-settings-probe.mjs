@@ -72,6 +72,8 @@ let routeResponse = {
     { id: "gpt56", label: "GPT-5.6 Sol（Codex 载荷）" },
     { id: "claude", label: "Claude（Keysmith 载荷）" },
     { id: "grok", label: "Grok（Keysmith 载荷）" },
+    { id: "glm", label: "GLM（ZCode 载荷）" },
+    { id: "kimi", label: "Kimi（kimi-break 载荷）" },
   ],
 };
 globalThis.fetch = (url, init) => {
@@ -101,7 +103,7 @@ check(tabEntry?.options.id === "dsh-switch-armor", "tab id = 插件包名", Stri
 check(typeof tabEntry?.options.label === "function" && tabEntry.options.label() === "Switch Armor",
   "tab 标签 = Switch Armor", String(tabEntry?.options.label?.()));
 
-// ── 渲染设置页组件：断言七份载荷都列出来、自动模式下的选中态 ────────────────
+// ── 渲染设置页组件：断言九份载荷都列出来、自动模式下的选中态 ────────────────
 // apply 里已经触发过一次 routing.refresh()；等它 settle 再渲染
 // （真实运行时由组件内的 useEffect 再刷新一次，探针不跑 effect，故手动等）。
 await new Promise((resolve) => setTimeout(resolve, 30));
@@ -118,12 +120,12 @@ const nodes = collect(tree);
 const texts = nodes.map((n) => (Array.isArray(n.children) ? n.children.join("") : n.children)).filter((v) => typeof v === "string");
 const flat = texts.join(" | ");
 check(nodes.length > 0, "设置页组件渲染出节点");
-for (const id of ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"]) {
+for (const id of ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok", "glm", "kimi"]) {
   check(flat.includes(id), `设置页列出载荷 ${id}`);
 }
-// 两个模式按钮 + 七个载荷按钮
+// 两个模式按钮 + 九个载荷按钮
 const buttons = nodes.filter((n) => n.type === "button");
-check(buttons.length === 9, "渲染 9 个按钮（2 模式 + 7 载荷）", `实得 ${buttons.length}`);
+check(buttons.length === 11, "渲染 11 个按钮（2 模式 + 9 载荷）", `实得 ${buttons.length}`);
 const modeAuto = buttons.find((b) => (Array.isArray(b.children) ? b.children.join("") : b.children) === "自动");
 check(modeAuto !== undefined && modeAuto.props["data-active"] === "true", "自动模式默认选中");
 const manualBtn = buttons.find((b) => (Array.isArray(b.children) ? b.children.join("") : b.children) === "手动");

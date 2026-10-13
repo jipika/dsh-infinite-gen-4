@@ -182,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.8.3"', "内核版本 0.8.3");
+mustContain(indexSrc, 'pluginVersion: "0.9.0"', "内核版本 0.9.0");
 mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -287,16 +287,24 @@ mustContain(indexSrc, 'if (!NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context
 mustContain(indexSrc, '"dsh-gen4": { label:', "载荷表: 备用自持档 dsh-gen4 在表内");
 mustContain(indexSrc, "claude: { label:", "载荷表: claude 在表内");
 mustContain(indexSrc, "grok: { label:", "载荷表: grok 在表内");
-check(indexSrc.includes('const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok"]'),
-  "载荷表: 白名单恰为 7 项");
-// 家族锚定分支：claude / grok 必须在「非 GPT 家族 → dsh」兜底之前
+mustContain(indexSrc, 'glm: { label: "GLM（ZCode 载荷）"', "载荷表: glm 在表内");
+mustContain(indexSrc, 'kimi: { label: "Kimi（kimi-break 载荷）"', "载荷表: kimi 在表内");
+check(indexSrc.includes('const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok", "glm", "kimi"]'),
+  "载荷表: 白名单恰为 9 项");
+// 新载荷文件必须真实存在且非空（loadPayloadTable 对缺失文件静默置空串，这里兜住）
+check(readFileSync(join(ROOT, "prompts/glm-keysmith.md"), "utf8").length > 1000, "载荷文件: glm-keysmith.md 存在且非空");
+check(readFileSync(join(ROOT, "prompts/kimi-break.md"), "utf8").length > 1000, "载荷文件: kimi-break.md 存在且非空");
+mustAbsent(readFileSync(join(ROOT, "prompts/kimi-break.md"), "utf8"), "${", "kimi 适配稿: 无残留宿主模板变量");
+// 家族锚定分支：claude / grok / glm / kimi 必须在「非 GPT 家族 → dsh」兜底之前
 {
   const iClaude = indexSrc.indexOf("if (/^claude/.test(id)) return \"claude\"");
   const iGrok = indexSrc.indexOf("if (/^grok/.test(id)) return \"grok\"");
+  const iGlm = indexSrc.indexOf("if (/^(?:glm|chatglm)/.test(id)) return \"glm\"");
+  const iKimi = indexSrc.indexOf("if (/^kimi/.test(id)) return \"kimi\"");
   const iGptFallback = indexSrc.indexOf("if (!isGptFamily(id)) return \"dsh\"");
-  check(iClaude > 0 && iGrok > iClaude && iGptFallback > iGrok,
-    "载荷分流: claude / grok 锚定分支位于 GPT 家族兜底之前",
-    `位置 claude ${iClaude} / grok ${iGrok} / 兜底 ${iGptFallback}`);
+  check(iClaude > 0 && iGrok > iClaude && iGlm > iGrok && iKimi > iGlm && iGptFallback > iKimi,
+    "载荷分流: claude / grok / glm / kimi 锚定分支位于 GPT 家族兜底之前",
+    `位置 claude ${iClaude} / grok ${iGrok} / glm ${iGlm} / kimi ${iKimi} / 兜底 ${iGptFallback}`);
 }
 // 离线探针钩子
 mustContain(indexSrc, "__testMatchPayloadId", "探针钩子: 导出 matchPayloadId");
@@ -350,9 +358,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
-check(pkg.version === "0.8.3", "package.json version = 0.8.3");
+check(pkg.version === "0.9.0", "package.json version = 0.9.0");
 check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
-check(pkg.dsh?.version === "0.8.3", "dsh.version = 0.8.3");
+check(pkg.dsh?.version === "0.9.0", "dsh.version = 0.9.0");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 5b. 版本一致性（四者相等，期望值只从 package.json 读，不写死） ----

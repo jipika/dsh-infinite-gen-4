@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.3)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.9.0)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -61,7 +61,7 @@
     会让「claude 文件缺失」静默注入一份自持稿 —— 属错误载荷而非降级。
 - **设置页 tab（v0.7.0）**：挂 `settings.plugins.tab`（`id` = 插件包名 `dsh-switch-armor`，
   宿主按包名把 tab 归到本插件那一行），提供「自动 / 手动」模式切换，以及手动模式下的
-  载荷单选（七份：dsh / dsh-gen4 / gpt61 / gpt6 / gpt56 / claude / grok）。写入走 host 自有路由
+  载荷单选（九份：dsh / dsh-gen4 / gpt61 / gpt6 / gpt56 / claude / grok / glm / kimi）。写入走 host 自有路由
   `/dsh-switch-armor/settings`，读走同一路由的 GET（返回 `mode` / `manualPayload` /
   `payloads` / `resolvedPayload`）。
 - **双层提示词协同注入（Dual-Layer Injection）**：
@@ -85,7 +85,7 @@
   不存在可拒绝的请求类别。
 - **评分器与会话投影**：开头窗口（160）判拒 + REFUSAL / FALLBACK / SAFE / RISK 四类标记
   + 域命中检测，驱动客户端状态条展示。该投影是**评分器**，不参与系统提示词注入。
-- **客户端实时状态条**：在输入框上方挂载 `⚫ Switch Armor v0.5.0` 动态状态条（含命中域/载荷数显示）。
+- **客户端实时状态条**：在输入框上方挂载 `⚫ Switch Armor v{VERSION}` 动态状态条（含命中域/载荷数显示）。
   状态条与开关共用一张注入的样式表（`#dsh-armor-style`），外观全部来自 DSH 设计 token
   （`--dsw-alias-*`），状态由 `data-phase` / `aria-checked` 驱动，**组件内不写任何 inline style**
   —— 因此不会漏出浏览器默认的黑色 outline，深/浅主题自动跟随。
@@ -146,15 +146,16 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | v0.8.0 | **项目定名 Switch Armor**；载荷分流 7 份；段位 order 0.1/0.2；文档全面重写 |
 | v0.8.1 | 新增项目 banner（随包发布） |
 | v0.8.2 | 补全 npm 元数据：`license: MIT` + `keywords`（解决 npm 页面不显示许可证） |
-| **v0.8.3** | 修客户端状态条版本漂移；新增「四者版本一致」与「样式锚点缺失即失败」两类断言 |
+| v0.8.3 | 修客户端状态条版本漂移；新增「四者版本一致」与「样式锚点缺失即失败」两类断言 |
+| **v0.9.0** | **载荷表 7 → 9**：新增 `glm`（`^(?:glm\|chatglm)` → ZCode 载荷，为 GLM 写的）与 `kimi`（`^kimi` → kimi-break，收编时剥离 Kimi Code 宿主段）；`glm-5.3*` 从 `dsh` 档改判 `glm` 档 |
 
 ## Local verification
 
 ```powershell
 node --check index.js && node --check client.js
-node scripts/verify_prompt_gen4.mjs    # 247 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
+node scripts/verify_prompt_gen4.mjs    # 256 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
 node tests/payload-routing-probe.mjs   # 104 项：分流矩阵 + 单段/双段 + 手动模式 + 400 分支
-node tests/armor-settings-probe.mjs    # 25 项：设置页 9 按钮（2 模式 + 7 载荷）+ 写入路径
+node tests/armor-settings-probe.mjs    # 27 项：设置页 11 按钮（2 模式 + 9 载荷）+ 写入路径
 node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染
 ```
 
