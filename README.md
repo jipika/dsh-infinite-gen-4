@@ -5,15 +5,15 @@
 </p>
 
 <p align="center">
-  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.2&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.3&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
     <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20%E5%94%A4%E8%B5%B7%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
   </a>
-  <img src="https://img.shields.io/badge/version-0.8.2-blue?style=for-the-badge" alt="v0.8.2" />
+  <img src="https://img.shields.io/badge/version-0.8.3-blue?style=for-the-badge" alt="v0.8.3" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT" />
 </p>
 
 <p align="center">
-  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.2&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.3&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
     <b>🚀 唤起桌面客户端一键安装</b>
   </a>
 </p>
@@ -141,7 +141,7 @@ dsh-switch-armor/
 ### 方式 1：dsh:// 协议一键安装（桌面端）
 
 ```
-dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.2&repo=jipika%2Fdsh-switch-armor&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip
+dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.8.3&repo=jipika%2Fdsh-switch-armor&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip
 ```
 
 ### 方式 2：手动配置
@@ -183,7 +183,7 @@ node tests/payload-routing-probe.mjs
 node tests/armor-settings-probe.mjs
 ```
 
-**界面**：输入框工具栏左侧出现 `⚫ Switch Armor v0.8.2` 状态条；设置 → 插件 → Switch Armor 有独立分栏。
+**界面**：输入框工具栏左侧出现 `⚫ Switch Armor v0.8.3` 状态条；设置 → 插件 → Switch Armor 有独立分栏。
 
 **路由**（重启后）：
 
@@ -206,7 +206,8 @@ curl -s "http://127.0.0.1:19387/dsh-switch-armor/session?id=$DSH_SESSION_ID"
 
 | 版本 | 说明 |
 |---|---|
-| **v0.8.2** | 补全 npm 元数据：`license` 与 `keywords` |
+| **v0.8.3** | 修客户端状态条版本漂移（`client.js` 定格 0.6.0 → 与实际版本对齐）；补版本一致性断言与样式锚点失败判定 |
+| v0.8.2 | 补全 npm 元数据：`license` 与 `keywords` |
 | v0.8.1 | 新增项目 banner；包内含静态资源 |
 | v0.8.0 | 项目更名 Switch Armor；载荷分流 7 份（自持 / Codex 三档 / Claude / Grok）；段位 order 0.1 / 0.2 |
 | v0.7.1 | 段位前移：载荷从「排在记忆索引之后」提到 persona 之后、记忆之前 |

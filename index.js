@@ -233,9 +233,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.8.2";
+const VERSION = "0.8.3";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.8.2"
+//   pluginVersion: "0.8.3"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
@@ -781,7 +781,7 @@ const objectOutput = {
 const profileTool = {
   name: "switch_armor_profile",
   description:
-    "Return runtime metadata for the bundled Switch Armor (Switch Armor) 破甲系统提示词与版本元数据。",
+    "Return runtime metadata for the bundled Switch Armor 破甲系统提示词与版本元数据。",
   parameters: { type: "object", properties: {}, additionalProperties: false },
   output: objectOutput,
   execute() {

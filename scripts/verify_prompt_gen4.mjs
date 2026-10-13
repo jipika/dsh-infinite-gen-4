@@ -182,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.8.2"', "内核版本 0.8.2");
+mustContain(indexSrc, 'pluginVersion: "0.8.3"', "内核版本 0.8.3");
 mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -350,10 +350,36 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
-check(pkg.version === "0.8.2", "package.json version = 0.8.2");
+check(pkg.version === "0.8.3", "package.json version = 0.8.3");
 check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
-check(pkg.dsh?.version === "0.8.2", "dsh.version = 0.8.2");
+check(pkg.dsh?.version === "0.8.3", "dsh.version = 0.8.3");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
+
+// ---- 5b. 版本一致性（四者相等，期望值只从 package.json 读，不写死） ----
+// 历史缺口：client.js 曾长期停在 VERSION = "0.6.0"（状态条显示错版本），而当时这里
+// 只断言了 `mustAbsent(clientSrc, "Switch Armor v0.3.0")` —— 只挡一个具体的旧值，
+// 任何别的新值都能蒙混过关。现在改为四者互相锁定。
+// 期望值取 pkg.version 作为唯一权威源；每个文件里的 VERSION 必须【恰好匹配一次】，
+// 匹配 0 次（改名/被删）或多次（多份副本）都直接失败，杜绝 undefined === undefined 静默通过。
+const pkgVersion = typeof pkg.version === "string" ? pkg.version : "";
+// 注意：clientSrc 原本在第 6 节才声明，这里提前读，避免 TDZ 报错。
+const clientSrcForVersion = existsSync(join(ROOT, "client.js")) ? readFileSync(join(ROOT, "client.js"), "utf8") : "";
+function extractVersion(src, label) {
+  const re = /^\s*(?:const|var|let)\s+VERSION\s*=\s*"([^"]+)"/m;
+  const all = src.match(new RegExp(re.source, "gm")) ?? [];
+  if (all.length !== 1) {
+    check(false, `${label} 的 VERSION 声明恰好一处`, `实际匹配 ${all.length} 处`);
+    return "";
+  }
+  const m = src.match(re);
+  return m ? m[1] : "";
+}
+const versionIndex = extractVersion(indexSrc, "index.js");
+const versionClient = extractVersion(clientSrcForVersion, "client.js");
+check(pkgVersion.length > 0, "package.json version 非空（作为唯一权威源）", `实际 "${pkgVersion}"`);
+check(versionIndex.length > 0 && versionIndex === pkgVersion, "index.js VERSION = package.json version", `index.js="${versionIndex}" pkg="${pkgVersion}"`);
+check(versionClient.length > 0 && versionClient === pkgVersion, "client.js VERSION = package.json version", `client.js="${versionClient}" pkg="${pkgVersion}"`);
+check(pkg.dsh?.version === pkgVersion, "dsh.version = package.json version", `dsh="${pkg.dsh?.version}" pkg="${pkgVersion}"`);
 
 // ---- 6. 客户端状态条版本 ----
 const clientSrc = existsSync(join(ROOT, "client.js")) ? readFileSync(join(ROOT, "client.js"), "utf8") : "";

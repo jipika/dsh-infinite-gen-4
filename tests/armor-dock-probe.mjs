@@ -113,11 +113,32 @@ console.table([row(undefined, 'off（开关关闭）')]);
 // 样式表在 apply() 阶段注入一次，不再随组件挂载重复插入
 console.log('注入样式表次数:', headChildren.length, '→', headChildren.map((e) => `${e.id}(${e.textContent.length}字符)`).join(', '));
 const css = headChildren[0].textContent;
+// 锚点必须与 client.js 样式表实际用到的 token 一致（统一带 --dsw-alias- 前缀）。
+// 历史上这里列过 state-business-tertiary / state-error-secondary —— 状态条配色改成
+// -primary 系后这两项永远 MISS，而 MISS 只是 console.log、探针照样 exit 0，
+// 于是「一直存在的 MISS」和「新出现的 MISS」在输出里长得一样，真回归被掩盖。
+// 改法：锚点对齐真实 token 清单，收集全部缺失后一次性 exit(1)。
 const probes = [
   '@keyframes dshArmorPulse', '@keyframes dshArmorFlash',
   ".dsh-armor-pill[data-phase='running']", ".dsh-armor-pill[data-phase='pass']", ".dsh-armor-pill[data-phase='refusal']",
-  'state-business-tertiary', 'state-error-secondary', 'bg-layer-2', 'state-success-primary', 'label-tertiary',
-  'brand-primary', 'focus-visible', 'border:0',
+  '--dsw-alias-bg-layer-1', '--dsw-alias-bg-layer-2',
+  '--dsw-alias-border-l2', '--dsw-alias-border-l3',
+  '--dsw-alias-brand-primary',
+  '--dsw-alias-label-primary', '--dsw-alias-label-primary-foreground',
+  '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary',
+  '--dsw-alias-state-business-primary', '--dsw-alias-state-error-primary', '--dsw-alias-state-success-primary',
+  'focus-visible', 'border:0',
 ];
 console.log('样式表锚点:');
-probes.forEach((p) => console.log('  ' + p.padEnd(38), css.includes(p) ? 'OK' : 'MISS'));
+const missed = [];
+probes.forEach((p) => {
+  const ok = css.includes(p);
+  if (!ok) missed.push(p);
+  console.log('  ' + p.padEnd(42), ok ? 'OK' : 'MISS');
+});
+if (missed.length > 0) {
+  console.error(`\n❌ 样式表锚点缺失 ${missed.length}/${probes.length} 项：`);
+  missed.forEach((m) => console.error('   · ' + m));
+  process.exit(1);
+}
+console.log(`\n✅ 样式表锚点全部命中（${probes.length} 项）`);

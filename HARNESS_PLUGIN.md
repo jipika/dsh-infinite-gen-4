@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.2)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.8.3)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -145,7 +145,8 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | v0.7.1 | **段位前移**：载荷 order 由 100/200 改为 **0.1/0.2**，从「排在 19.5k 记忆索引之后」提到 `persona(0)` 之后、`dsh-memory(1)` 之前 |
 | v0.8.0 | **项目定名 Switch Armor**；载荷分流 7 份；段位 order 0.1/0.2；文档全面重写 |
 | v0.8.1 | 新增项目 banner（随包发布） |
-| **v0.8.2** | 补全 npm 元数据：`license: MIT` + `keywords`（解决 npm 页面不显示许可证） |
+| v0.8.2 | 补全 npm 元数据：`license: MIT` + `keywords`（解决 npm 页面不显示许可证） |
+| **v0.8.3** | 修客户端状态条版本漂移；新增「四者版本一致」与「样式锚点缺失即失败」两类断言 |
 
 ## Local verification
 

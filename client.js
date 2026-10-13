@@ -20,7 +20,9 @@
            默认关闭：host 半 DEFAULT_ENABLED = false，未写 settings.yaml 时开关与状态条均为「已关闭」 */
         var SETTINGS_NAMESPACE = "dsh-switch-armor";
         var SETTINGS_FIELD = "enabled";
-        var VERSION = "0.6.0";
+        /* 版本号：必须与 index.js 的 VERSION 和 package.json 的 version 一致。
+           verify_prompt_gen4.mjs 第 6 节有四者相等断言锁死，别再手改单处。 */
+        var VERSION = "0.8.3";
 
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
