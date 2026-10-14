@@ -22,7 +22,7 @@
         var SETTINGS_FIELD = "enabled";
         /* 版本号：必须与 index.js 的 VERSION 和 package.json 的 version 一致。
            verify_prompt_gen4.mjs 第 6 节有四者相等断言锁死，别再手改单处。 */
-        var VERSION = "0.10.0";
+        var VERSION = "0.10.1";
 
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
@@ -68,7 +68,20 @@
           ".dsh-armor-opt[data-active='true']{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-label-primary-foreground)}" +
           ".dsh-armor-opt:disabled{cursor:default;opacity:.5}" +
           ".dsh-armor-opt:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}" +
-          ".dsh-armor-s-note{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}";
+          ".dsh-armor-s-note{font-size:12px;line-height:18px;color:var(--dsw-alias-label-secondary)}" +
+          // ── 按模型覆盖区（0.10.0；0.10.1 按用户反馈重排）──────────────────────
+          // 层级口径对齐官方设置页（PluginsSettingsSection.module.css）：
+          // 区块 heading 18px/600，intro 13px label-tertiary，分组卡片 bg-layer-2 + border-l2。
+          ".dsh-armor-h2{margin:0;font-size:18px;font-weight:600;color:var(--dsw-alias-label-primary);font-family:inherit}" +
+          ".dsh-armor-ov-card{display:flex;flex-direction:column;gap:8px;padding:12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}" +
+          ".dsh-armor-ov-title{margin:0;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);font-family:inherit}" +
+          ".dsh-armor-ov-controls{display:flex;flex-wrap:wrap;gap:6px;min-width:0}" +
+          // ── 自定义载荷输入框 ─────────────────────────────────────────────────
+          ".dsh-armor-custom{display:flex;flex-direction:column;gap:8px}" +
+          ".dsh-armor-custom-input{box-sizing:border-box;width:100%;min-height:120px;padding:8px 10px;border-radius:8px;border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);font-family:inherit;font-size:12px;line-height:18px;resize:vertical}" +
+          ".dsh-armor-custom-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}" +
+          ".dsh-armor-custom-input::placeholder{color:var(--dsw-alias-label-tertiary)}" +
+          ".dsh-armor-custom-foot{display:flex;align-items:center;gap:8px}";
 
         /* 样式表只注入一次，且在组件之外完成：dock 按会话挂载，放在 effect 里会让
            多个会话并发插入同一张表（getElementById 无法防住同一 tick 内的竞态）。 */
@@ -536,7 +549,7 @@
                 : "手动模式：所有模型都使用 " + snap.manualPayload + "（默认仅自持档双段，其余单一整份只注入单段；族覆盖可强制改双段）。"
             ),
             // ── 按模型族覆盖（0.10.0）──────────────────────────────────────────
-            react.createElement("div", { className: "dsh-armor-s-title" }, "按模型覆盖"),
+            react.createElement("h3", { className: "dsh-armor-h2" }, "按模型覆盖"),
             react.createElement(
               "div",
               { className: "dsh-armor-s-desc" },
@@ -551,15 +564,14 @@
                     var family = item && item.id ? item.id : "";
                     var ov = snap.modelOverrides[family];
                     var active = ov && ov.payload ? ov.payload : "";
-                    var loadout = active === "" ? "默认" : active === "custom" ? "自定义" : active;
                     var dual = ov && typeof ov.dualLayer === "boolean" ? (ov.dualLayer ? "双段" : "单段") : "";
                     return react.createElement(
                       "div",
-                      { key: family, className: "dsh-armor-ov-row", "data-family": family },
-                      react.createElement("span", { className: "dsh-armor-s-label" }, family),
+                      { key: family, className: "dsh-armor-ov-card", "data-family": family },
+                      react.createElement("h4", { className: "dsh-armor-ov-title" }, family),
                       react.createElement(
                         "div",
-                        { className: "dsh-armor-seg" },
+                        { className: "dsh-armor-ov-controls" },
                         // 「默认」按钮：清掉该族覆盖
                         react.createElement(
                           "button",
@@ -588,7 +600,7 @@
                             pid
                           );
                         }),
-                        // 双段开关（三态：默认 / 强制双段 / 强制单段）
+                        // 双段开关（强制覆盖原生口径；高亮即当前生效值）
                         react.createElement(
                           "button",
                           {
@@ -611,28 +623,18 @@
                           },
                           "单段"
                         )
-                      ),
-                      react.createElement(
-                        "span",
-                        { className: "dsh-armor-s-desc" },
-                        loadout + (dual !== "" ? " · " + dual : "")
                       )
                     );
                   })
             ),
             // ── 自定义载荷（0.10.0）────────────────────────────────────────────
-            react.createElement("div", { className: "dsh-armor-s-title" }, "自定义载荷"),
+            react.createElement("h3", { className: "dsh-armor-h2" }, "自定义载荷"),
             react.createElement(
               "div",
               { className: "dsh-armor-s-desc" },
               "粘贴任意提示词文本，存为 custom 载荷；在上方把某个模型族指到「自定义」即生效。上限 64k 字符。"
             ),
-            react.createElement(CustomPayloadEditor, null),
-            react.createElement(
-              "div",
-              { className: "dsh-armor-s-note" },
-              "当前自定义载荷：" + (snap.customPayload.text.length > 0 ? snap.customPayload.text.length + " 字符" : "（空）")
-            )
+            react.createElement(CustomPayloadEditor, null)
           );
         }
 
@@ -666,15 +668,24 @@
               onChange: function (event) { setDraft(event && event.target ? event.target.value : ""); }
             }),
             react.createElement(
-              "button",
-              {
-                type: "button",
-                className: "dsh-armor-opt",
-                "data-active": dirty ? "true" : "false",
-                disabled: busy || !dirty,
-                onClick: save
-              },
-              dirty ? "保存自定义载荷" : "已保存"
+              "div",
+              { className: "dsh-armor-custom-foot" },
+              react.createElement(
+                "button",
+                {
+                  type: "button",
+                  className: "dsh-armor-opt",
+                  "data-active": dirty ? "true" : "false",
+                  disabled: busy || !dirty,
+                  onClick: save
+                },
+                dirty ? "保存自定义载荷" : "已保存"
+              ),
+              react.createElement(
+                "span",
+                { className: "dsh-armor-s-desc" },
+                snap.customPayload.text.length > 0 ? snap.customPayload.text.length + " 字符" : "（空）"
+              )
             )
           );
         }

@@ -182,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.10.0"', "内核版本 0.10.0");
+mustContain(indexSrc, 'pluginVersion: "0.10.1"', "内核版本 0.10.1");
 mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -284,7 +284,7 @@ mustContain(indexSrc, "NATIVE_PAYLOAD_IDS", "双段口径: 自持族白名单");
 mustContain(indexSrc, '["dsh", "dsh-gen4"]', "双段口径: 自持族恰为 dsh 与 dsh-gen4");
 mustContain(indexSrc, "if (!dualLayerFor(context)) return \"\"",
   "双段口径: order 200 走 dualLayerFor（原生判定 + 族覆盖可强制）");
-// ── 0.10.0：按模型族覆盖 + 自定义载荷 ────────────────────────────────────────
+// ── 0.10.1：按模型族覆盖 + 自定义载荷 ────────────────────────────────────────
 mustContain(indexSrc, "function dualLayerFor(context)", "覆盖: dualLayerFor 存在");
 mustContain(indexSrc, "override.dualLayer", "覆盖: 族覆盖可强制双段（override.dualLayer 判定）");
 mustContain(indexSrc, "override.payload", "覆盖: 族覆盖可改判载荷（override.payload）");
@@ -372,9 +372,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
-check(pkg.version === "0.10.0", "package.json version = 0.10.0");
+check(pkg.version === "0.10.1", "package.json version = 0.10.1");
 check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
-check(pkg.dsh?.version === "0.10.0", "dsh.version = 0.10.0");
+check(pkg.dsh?.version === "0.10.1", "dsh.version = 0.10.1");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 5b. 版本一致性（四者相等，期望值只从 package.json 读，不写死） ----

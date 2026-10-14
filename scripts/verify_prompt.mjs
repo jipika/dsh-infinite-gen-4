@@ -115,7 +115,7 @@ mustContain(indexSrc, '"./prompts/infinite-gen-4.1-flash.md"', "index.js 载入 
 mustContain(indexSrc, "switch-armor:global-system-prompt", "注入槽位 Order 100");
 mustContain(indexSrc, "switch-armor:dual-layer-reinforce", "注入槽位 Order 200");
 mustContain(indexSrc, "DUAL_LAYER_INJECTION", "双段注入开关");
-mustContain(indexSrc, 'pluginVersion: "0.10.0"', "内核版本 0.10.0");
+mustContain(indexSrc, 'pluginVersion: "0.10.1"', "内核版本 0.10.1");
 mustContain(indexSrc, "stateVersion: 3", "投影 stateVersion 3");
 // 评分器单源修订（2026-10-08 按上游 PR#21）：规则表位于 scripts/lib/scorer.mjs，
 // index.js 只做委托调用，不再维护第二份副本。

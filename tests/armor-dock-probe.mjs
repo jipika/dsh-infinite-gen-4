@@ -127,6 +127,9 @@ const probes = [
   '--dsw-alias-label-primary', '--dsw-alias-label-primary-foreground',
   '--dsw-alias-label-secondary', '--dsw-alias-label-tertiary',
   '--dsw-alias-state-business-primary', '--dsw-alias-state-error-primary', '--dsw-alias-state-success-primary',
+  // 0.10.0 按模型覆盖区 + 自定义输入框（类名与 token 打错字会静默失效，锁住）
+  '.dsh-armor-ov-card{', '.dsh-armor-ov-title{', '.dsh-armor-ov-controls{',
+  '.dsh-armor-h2{', '.dsh-armor-custom-input{', '.dsh-armor-custom-foot{',
   'focus-visible', 'border:0',
 ];
 console.log('样式表锚点:');
