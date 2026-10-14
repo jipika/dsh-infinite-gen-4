@@ -182,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.10.1"', "内核版本 0.10.1");
+mustContain(indexSrc, 'pluginVersion: "0.10.2"', "内核版本 0.10.2");
 mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -284,7 +284,7 @@ mustContain(indexSrc, "NATIVE_PAYLOAD_IDS", "双段口径: 自持族白名单");
 mustContain(indexSrc, '["dsh", "dsh-gen4"]', "双段口径: 自持族恰为 dsh 与 dsh-gen4");
 mustContain(indexSrc, "if (!dualLayerFor(context)) return \"\"",
   "双段口径: order 200 走 dualLayerFor（原生判定 + 族覆盖可强制）");
-// ── 0.10.1：按模型族覆盖 + 自定义载荷 ────────────────────────────────────────
+// ── 0.10.2：按模型族覆盖 + 自定义载荷 ────────────────────────────────────────
 mustContain(indexSrc, "function dualLayerFor(context)", "覆盖: dualLayerFor 存在");
 mustContain(indexSrc, "override.dualLayer", "覆盖: 族覆盖可强制双段（override.dualLayer 判定）");
 mustContain(indexSrc, "override.payload", "覆盖: 族覆盖可改判载荷（override.payload）");
@@ -298,6 +298,31 @@ mustContain(indexSrc, 'modelOverrides: modelOverridesField()', "schema: modelOve
 mustContain(indexSrc, 'customPayload: customPayloadField()', "schema: customPayload 已注册");
 mustContain(indexSrc, "__testDualLayerFor", "探针: dualLayerFor 已导出");
 mustContain(indexSrc, "__testSanitizeModelOverrides", "探针: 覆盖表清洗已导出");
+// 模型族清单（0.10.2）：覆盖区行 = matchPayloadId 的归属集合，不是载荷档。
+// 双向等式防漂移 —— 单向子集断言堵不住「新增族漏进清单」的静默失效：
+//   正向：matchPayloadId 每个 return 字面量 ∈ MODEL_FAMILIES
+//   反向：PAYLOAD_IDS \ MODEL_FAMILIES 恰为 {"dsh-gen4"}（唯一非族的载荷档）
+{
+  const iMF = indexSrc.indexOf("const MODEL_FAMILIES = [");
+  const mfBody = iMF >= 0 ? indexSrc.slice(iMF, indexSrc.indexOf("];", iMF) + 2) : "";
+  const mfList = mfBody.match(/"([a-z0-9_-]+)"/g)?.map((s) => s.replaceAll('"', "")) ?? [];
+  check(mfList.length === 8 && mfList.includes("dsh") && !mfList.includes("dsh-gen4"),
+    "MODEL_FAMILIES: 8 族且不含载荷档 dsh-gen4", JSON.stringify(mfList));
+  // 正向：分流函数体内的全部 return 字面量必须都被 MODEL_FAMILIES 覆盖
+  const fnStart = indexSrc.indexOf("function matchPayloadId");
+  const fnBody = fnStart >= 0 ? indexSrc.slice(fnStart, indexSrc.indexOf("\n}", fnStart) + 2) : "";
+  const returns = [...fnBody.matchAll(/return "([a-z0-9_-]+)"/g)].map((m) => m[1]).filter((x) => x !== "");
+  const missing = [...new Set(returns)].filter((r) => !mfList.includes(r));
+  check(returns.length > 0 && missing.length === 0,
+    "MODEL_FAMILIES 覆盖 matchPayloadId 全部 return 值", `缺失: ${JSON.stringify(missing)}`);
+  // 反向：PAYLOAD_IDS 与 MODEL_FAMILIES 的差集恰为 dsh-gen4
+  const piPI = indexSrc.indexOf("const PAYLOAD_IDS = [");
+  const piBody = piPI >= 0 ? indexSrc.slice(piPI, indexSrc.indexOf("];", piPI) + 2) : "";
+  const piList = piBody.match(/"([a-z0-9_-]+)"/g)?.map((s) => s.replaceAll('"', "")) ?? [];
+  const diff = piList.filter((x) => !mfList.includes(x));
+  check(diff.length === 1 && diff[0] === "dsh-gen4",
+    "PAYLOAD_IDS \\ MODEL_FAMILIES 恰为 {dsh-gen4}", JSON.stringify(diff));
+}
 mustContain(indexSrc, '"dsh-gen4": { label:', "载荷表: 备用自持档 dsh-gen4 在表内");
 mustContain(indexSrc, "claude: { label:", "载荷表: claude 在表内");
 mustContain(indexSrc, "grok: { label:", "载荷表: grok 在表内");
@@ -372,9 +397,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
-check(pkg.version === "0.10.1", "package.json version = 0.10.1");
+check(pkg.version === "0.10.2", "package.json version = 0.10.2");
 check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
-check(pkg.dsh?.version === "0.10.1", "dsh.version = 0.10.1");
+check(pkg.dsh?.version === "0.10.2", "dsh.version = 0.10.2");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 5b. 版本一致性（四者相等，期望值只从 package.json 读，不写死） ----

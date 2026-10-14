@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.10.1)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.10.2)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -151,6 +151,7 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | v0.9.1 | `swe` 系归入 `kimi` 载荷（`^(?:kimi\|swe[\d_-])`，收紧排除 `sweet-*`） |
 | **v0.10.0** | **按模型族覆盖 + 自定义载荷**：settings 新增 `modelOverrides`（`{ family: { payload, dualLayer } }`，payload 可为 `custom`）与 `customPayload`（`{ text }`，64k 字符上限）；`dualLayerFor()` 取代裸 `NATIVE_PAYLOAD_IDS.includes` 判定（族覆盖可强制双段/单段）；自有路由 GET/POST 扩两字段（对象字段按 JSON 序列化比对持久化校验）；设置页新增覆盖表（每族：默认/9 载荷/自定义/双段/单段）与自定义输入框；探针 collect 修复嵌套数组 children 漏数 |
 | **v0.10.1** | 设置页 UI 重排（用户反馈）：覆盖区改卡片布局（族名为 h4 标题）、删行尾冗余摘要、区块标题升 18px/600（对齐官方 PluginsSettingsSection 口径）、补 6 个 CSS 类定义（全走 --dsw-alias-* token）、dock 探针锚点 19→25 |
+| **v0.10.2** | **修覆盖区行集合错误**（用户指出「dsh-gen4 是莫名其妙的组」）：行 = 模型族（新常量 `MODEL_FAMILIES` 8 项，穷举验证无任何模型分流到 dsh-gen4）而非载荷档清单；每族行标题旁显示覆盖范围说明（`MODEL_FAMILY_HINTS`）；verify 新增**双向等式**断言防漂移（分流 return 值 ⊆ MODEL_FAMILIES，且 PAYLOAD_IDS \ MODEL_FAMILIES 恰为 {dsh-gen4}） |
 
 ## Local verification
 

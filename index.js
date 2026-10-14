@@ -82,6 +82,26 @@ function loadPayloadTable() {
 const PAYLOADS = loadPayloadTable();
 /** 载荷 id 白名单（用于手动模式的入参校验与设置页选项）。 */
 const PAYLOAD_IDS = ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok", "glm", "kimi"];
+/**
+ * 模型族清单（0.10.2）—— matchPayloadId 全部 return 值的枚举（8 项，穷举实测可达），
+ * 即 auto 分流的归属集合。**覆盖区的「行」按这个渲染，每行是一个模型族，不是载荷档。**
+ * `dsh-gen4` 不在这里：它是备用载荷档，穷举验证无任何模型分流到它（0.10.0 曾误把
+ * PAYLOAD_IDS 当行清单，多出一行「dsh-gen4」—— 用户指出「都没这么个模型」）。
+ * 漂移防护见 verify_prompt_gen4 的「双向等式」断言：分流 return 值集合 ⊆ MODEL_FAMILIES，
+ * 且 PAYLOAD_IDS \ MODEL_FAMILIES 恰为 {"dsh-gen4"} —— 新增族漏更新清单时探针会红。
+ */
+const MODEL_FAMILIES = ["dsh", "gpt56", "gpt6", "gpt61", "claude", "grok", "glm", "kimi"];
+/** 各模型族的说明（覆盖区行标题旁展示，帮用户对上「这族覆盖哪些模型」）。 */
+const MODEL_FAMILY_HINTS = {
+  dsh: "DeepSeek / 其它未列模型",
+  gpt56: "GPT-5.x / o 系 / codex",
+  gpt6: "GPT-6 / astra",
+  gpt61: "GPT-6.1 / luna 及以后",
+  claude: "Claude 系",
+  grok: "Grok 系",
+  glm: "GLM / ChatGLM 系",
+  kimi: "Kimi / swe 系",
+};
 /** 自持族：只有它们走双段注入（主槽位 + 镜像槽位同源逐字一致）。 */
 const NATIVE_PAYLOAD_IDS = ["dsh", "dsh-gen4"];
 /**
@@ -254,9 +274,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.10.1";
+const VERSION = "0.10.2";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.10.1"
+//   pluginVersion: "0.10.2"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
@@ -582,10 +602,11 @@ async function handleSettingsRoute(req, res) {
         manualPayload: state.manualPayload,
         resolvedPayload: state.mode === "manual" ? state.manualPayload : "(auto)",
         payloads: PAYLOAD_IDS.map((pid) => ({ id: pid, label: PAYLOADS[pid]?.label ?? pid })),
-        // 按模型族覆盖 + 自定义载荷（0.10.0）
+        // 按模型族覆盖 + 自定义载荷（0.10.0；0.10.2 行清单改用模型族而非载荷档）
         modelOverrides: state.modelOverrides,
         customPayload: state.customPayload,
         overridePayloadIds: OVERRIDE_PAYLOAD_IDS,
+        families: MODEL_FAMILIES.map((fid) => ({ id: fid, hint: MODEL_FAMILY_HINTS[fid] ?? "" })),
         source: runtimeOverride !== undefined ? "override" : "config",
       });
     }
@@ -1093,6 +1114,7 @@ export const __testPayloadTextFor = payloadTextFor;
 export const __testPayloads = PAYLOADS;
 // ── 0.10.0 按模型族覆盖 + 自定义载荷 ─────────────────────────────────────────
 export const __testOverridePayloadIds = OVERRIDE_PAYLOAD_IDS;
+export const __testModelFamilies = MODEL_FAMILIES;
 export const __testDualLayerFor = dualLayerFor;
 export const __testSanitizeModelOverrides = sanitizeModelOverrides;
 export const __testSanitizeCustomPayload = sanitizeCustomPayload;

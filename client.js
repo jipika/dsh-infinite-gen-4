@@ -22,7 +22,7 @@
         var SETTINGS_FIELD = "enabled";
         /* 版本号：必须与 index.js 的 VERSION 和 package.json 的 version 一致。
            verify_prompt_gen4.mjs 第 6 节有四者相等断言锁死，别再手改单处。 */
-        var VERSION = "0.10.1";
+        var VERSION = "0.10.2";
 
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
@@ -74,7 +74,9 @@
           // 区块 heading 18px/600，intro 13px label-tertiary，分组卡片 bg-layer-2 + border-l2。
           ".dsh-armor-h2{margin:0;font-size:18px;font-weight:600;color:var(--dsw-alias-label-primary);font-family:inherit}" +
           ".dsh-armor-ov-card{display:flex;flex-direction:column;gap:8px;padding:12px;border:.5px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}" +
+          ".dsh-armor-ov-head{display:flex;align-items:baseline;gap:8px;min-width:0}" +
           ".dsh-armor-ov-title{margin:0;font-size:14px;font-weight:600;color:var(--dsw-alias-label-primary);font-family:inherit}" +
+          ".dsh-armor-ov-hint{font-size:12px;color:var(--dsw-alias-label-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}" +
           ".dsh-armor-ov-controls{display:flex;flex-wrap:wrap;gap:6px;min-width:0}" +
           // ── 自定义载荷输入框 ─────────────────────────────────────────────────
           ".dsh-armor-custom{display:flex;flex-direction:column;gap:8px}" +
@@ -310,7 +312,7 @@
          * 与 setting 同款：外部 store 缓存 + useSyncExternalStore 稳定引用。
          */
         function createRoutingSource() {
-          var state = { mode: "auto", manualPayload: "dsh", payloads: [], modelOverrides: {}, customPayload: { text: "" }, status: "loading", reason: "" };
+          var state = { mode: "auto", manualPayload: "dsh", payloads: [], families: [], modelOverrides: {}, customPayload: { text: "" }, status: "loading", reason: "" };
           var listeners = new Set();
           var sameObj = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
           var publish = function (next) {
@@ -318,9 +320,10 @@
             if (next.mode === state.mode && next.manualPayload === state.manualPayload
               && next.status === state.status && reason === state.reason
               && next.payloads === state.payloads
+              && next.families === state.families
               && sameObj(next.modelOverrides, state.modelOverrides)
               && sameObj(next.customPayload, state.customPayload)) return;
-            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, modelOverrides: next.modelOverrides, customPayload: next.customPayload, status: next.status, reason: reason };
+            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, families: next.families, modelOverrides: next.modelOverrides, customPayload: next.customPayload, status: next.status, reason: reason };
             listeners.forEach(function (listener) { listener(); });
           };
           var sync = function () {
@@ -329,13 +332,14 @@
               function () { return void 0; }
             ).then(function (payload) {
               if (payload === void 0 || payload.ok !== true) {
-                publish({ mode: state.mode, manualPayload: state.manualPayload, payloads: state.payloads, modelOverrides: state.modelOverrides, customPayload: state.customPayload, status: "unavailable", reason: "host 路由不可用" });
+                publish({ mode: state.mode, manualPayload: state.manualPayload, payloads: state.payloads, families: state.families, modelOverrides: state.modelOverrides, customPayload: state.customPayload, status: "unavailable", reason: "host 路由不可用" });
                 return;
               }
               publish({
                 mode: payload.mode === "manual" ? "manual" : "auto",
                 manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : "dsh",
                 payloads: Array.isArray(payload.payloads) ? payload.payloads : [],
+                families: Array.isArray(payload.families) ? payload.families : [],
                 modelOverrides: payload.modelOverrides !== null && typeof payload.modelOverrides === "object" && !Array.isArray(payload.modelOverrides) ? payload.modelOverrides : {},
                 customPayload: payload.customPayload !== null && typeof payload.customPayload === "object" && !Array.isArray(payload.customPayload) && typeof payload.customPayload.text === "string" ? { text: payload.customPayload.text } : { text: "" },
                 status: "ready"
@@ -466,6 +470,13 @@
           var setBusy = busyPair[1];
           var ready = snap.status === "ready";
           var payloads = Array.isArray(snap.payloads) ? snap.payloads : [];
+          // 覆盖区的行 = 模型族（分流归属），不是载荷档 —— dsh-gen4 是备用档，没有模型会分流到它
+          var families = Array.isArray(snap.families) && snap.families.length > 0
+            ? snap.families
+            : [{ id: "dsh", hint: "DeepSeek / 其它未列模型" }, { id: "gpt56", hint: "GPT-5.x / o 系 / codex" },
+               { id: "gpt6", hint: "GPT-6 / astra" }, { id: "gpt61", hint: "GPT-6.1 / luna 及以后" },
+               { id: "claude", hint: "Claude 系" }, { id: "grok", hint: "Grok 系" },
+               { id: "glm", hint: "GLM / ChatGLM 系" }, { id: "kimi", hint: "Kimi / swe 系" }];
 
           react.useEffect(function () { routing.refresh(); }, []);
 
@@ -558,17 +569,23 @@
             react.createElement(
               "div",
               { className: "dsh-armor-list" },
-              payloads.length === 0
-                ? react.createElement("span", { className: "dsh-armor-s-desc" }, ready ? "（未取到载荷清单）" : "加载中…")
-                : payloads.map(function (item) {
+              families.length === 0
+                ? react.createElement("span", { className: "dsh-armor-s-desc" }, ready ? "（未取到模型族清单）" : "加载中…")
+                : families.map(function (item) {
                     var family = item && item.id ? item.id : "";
+                    var hint = item && item.hint ? item.hint : "";
                     var ov = snap.modelOverrides[family];
                     var active = ov && ov.payload ? ov.payload : "";
                     var dual = ov && typeof ov.dualLayer === "boolean" ? (ov.dualLayer ? "双段" : "单段") : "";
                     return react.createElement(
                       "div",
                       { key: family, className: "dsh-armor-ov-card", "data-family": family },
-                      react.createElement("h4", { className: "dsh-armor-ov-title" }, family),
+                      react.createElement(
+                        "div",
+                        { className: "dsh-armor-ov-head" },
+                        react.createElement("h4", { className: "dsh-armor-ov-title" }, family),
+                        hint !== "" ? react.createElement("span", { className: "dsh-armor-ov-hint" }, hint) : null
+                      ),
                       react.createElement(
                         "div",
                         { className: "dsh-armor-ov-controls" },

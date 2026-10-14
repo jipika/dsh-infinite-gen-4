@@ -128,8 +128,13 @@ for (const id of ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok",
 }
 // 两个模式按钮 + 九个载荷按钮
 const buttons = nodes.filter((n) => n.type === "button");
-// 0.10.0：2 模式 + 9 手动载荷 + 9 族×(1 默认 + 10 载荷[含 custom] + 2 双段/单段) + 1 保存 = 129
-check(buttons.length === 129, "渲染 129 个按钮（2 模式 + 9 载荷 + 9 族×13 覆盖 + 1 保存）", `实得 ${buttons.length}`);
+// 0.10.2：覆盖区行 = 模型族（8 族，dsh-gen4 是载荷档不是模型族，已移除）
+// 2 模式 + 9 手动载荷 + 8 族×(1 默认 + 10 载荷[含 custom] + 2 双段/单段) + 1 保存 = 116
+check(buttons.length === 116, "渲染 116 个按钮（2 模式 + 9 载荷 + 8 族×13 覆盖 + 1 保存）", `实得 ${buttons.length}`);
+// dsh-gen4 不得作为覆盖行出现（data-family 集合 = 模型族）
+const famRows = nodes.filter((n) => n.props && n.props["data-family"]).map((n) => n.props["data-family"]);
+check(!famRows.includes("dsh-gen4"), "覆盖行不含载荷档 dsh-gen4", JSON.stringify(famRows));
+check(famRows.length === 8, "覆盖行恰为 8 个模型族", JSON.stringify(famRows));
 
 
 const modeAuto = buttons.find((b) => (Array.isArray(b.children) ? b.children.join("") : b.children) === "自动");
