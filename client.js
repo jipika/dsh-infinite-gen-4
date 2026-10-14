@@ -22,7 +22,7 @@
         var SETTINGS_FIELD = "enabled";
         /* 版本号：必须与 index.js 的 VERSION 和 package.json 的 version 一致。
            verify_prompt_gen4.mjs 第 6 节有四者相等断言锁死，别再手改单处。 */
-        var VERSION = "0.9.1";
+        var VERSION = "0.10.0";
 
         /* 视觉样式表（开关 + 状态条共用一张）：
            内联 style 无法声明 :focus-visible、也无法按 data-phase 组合多个状态，
@@ -291,19 +291,23 @@
 
         /**
          * 载荷路由状态源（mode / manualPayload / payloads 清单 / 当前生效项）。
+         * 0.10.0 起含按模型族覆盖（modelOverrides）与自定义载荷（customPayload）。
          * 只走 host 自有路由 /dsh-switch-armor/settings（GET 读 / POST 写）——
          * 表单面对多字段的支持取决于 entry schema 是否 volatile，自有路由是无条件可用的那条。
          * 与 setting 同款：外部 store 缓存 + useSyncExternalStore 稳定引用。
          */
         function createRoutingSource() {
-          var state = { mode: "auto", manualPayload: "dsh", payloads: [], status: "loading", reason: "" };
+          var state = { mode: "auto", manualPayload: "dsh", payloads: [], modelOverrides: {}, customPayload: { text: "" }, status: "loading", reason: "" };
           var listeners = new Set();
+          var sameObj = function (a, b) { return JSON.stringify(a) === JSON.stringify(b); };
           var publish = function (next) {
             var reason = next.reason === void 0 ? "" : next.reason;
             if (next.mode === state.mode && next.manualPayload === state.manualPayload
               && next.status === state.status && reason === state.reason
-              && next.payloads === state.payloads) return;
-            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, status: next.status, reason: reason };
+              && next.payloads === state.payloads
+              && sameObj(next.modelOverrides, state.modelOverrides)
+              && sameObj(next.customPayload, state.customPayload)) return;
+            state = { mode: next.mode, manualPayload: next.manualPayload, payloads: next.payloads, modelOverrides: next.modelOverrides, customPayload: next.customPayload, status: next.status, reason: reason };
             listeners.forEach(function (listener) { listener(); });
           };
           var sync = function () {
@@ -312,13 +316,15 @@
               function () { return void 0; }
             ).then(function (payload) {
               if (payload === void 0 || payload.ok !== true) {
-                publish({ mode: state.mode, manualPayload: state.manualPayload, payloads: state.payloads, status: "unavailable", reason: "host 路由不可用" });
+                publish({ mode: state.mode, manualPayload: state.manualPayload, payloads: state.payloads, modelOverrides: state.modelOverrides, customPayload: state.customPayload, status: "unavailable", reason: "host 路由不可用" });
                 return;
               }
               publish({
                 mode: payload.mode === "manual" ? "manual" : "auto",
                 manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : "dsh",
                 payloads: Array.isArray(payload.payloads) ? payload.payloads : [],
+                modelOverrides: payload.modelOverrides !== null && typeof payload.modelOverrides === "object" && !Array.isArray(payload.modelOverrides) ? payload.modelOverrides : {},
+                customPayload: payload.customPayload !== null && typeof payload.customPayload === "object" && !Array.isArray(payload.customPayload) && typeof payload.customPayload.text === "string" ? { text: payload.customPayload.text } : { text: "" },
                 status: "ready"
               });
             });
@@ -338,6 +344,8 @@
                   mode: payload.mode === "manual" ? "manual" : "auto",
                   manualPayload: typeof payload.manualPayload === "string" ? payload.manualPayload : state.manualPayload,
                   payloads: state.payloads,
+                  modelOverrides: payload.modelOverrides !== null && typeof payload.modelOverrides === "object" && !Array.isArray(payload.modelOverrides) ? payload.modelOverrides : state.modelOverrides,
+                  customPayload: payload.customPayload !== null && typeof payload.customPayload === "object" && !Array.isArray(payload.customPayload) && typeof payload.customPayload.text === "string" ? { text: payload.customPayload.text } : state.customPayload,
                   status: "ready"
                 });
               }
@@ -354,7 +362,16 @@
             },
             refresh: sync,
             setMode: function (mode) { return write({ mode: mode }); },
-            setManualPayload: function (id) { return write({ manualPayload: id }); }
+            setManualPayload: function (id) { return write({ manualPayload: id }); },
+            /** 覆盖单个模型族（patch = { payload?, dualLayer? }；remove = 清除该族覆盖回到默认分流）。 */
+            setOverride: function (family, patch) {
+              var next = JSON.parse(JSON.stringify(state.modelOverrides));
+              if (patch === null) delete next[family];
+              else next[family] = Object.assign({}, next[family], patch);
+              return write({ modelOverrides: next });
+            },
+            /** 整体写自定义载荷文本。 */
+            setCustomText: function (text) { return write({ customPayload: { text: text } }); }
           };
         }
 
@@ -515,8 +532,149 @@
               "div",
               { className: "dsh-armor-s-note" },
               snap.mode === "auto"
-                ? "自动模式：载荷随模型实时切换，无需手动干预。"
-                : "手动模式：所有模型都使用 " + snap.manualPayload + "（仅自持档 dsh / dsh-gen4 双段，其余单一整份只注入单段）。"
+                ? "自动模式：载荷随模型实时切换，无需手动干预；下方可对个别模型族改判。"
+                : "手动模式：所有模型都使用 " + snap.manualPayload + "（默认仅自持档双段，其余单一整份只注入单段；族覆盖可强制改双段）。"
+            ),
+            // ── 按模型族覆盖（0.10.0）──────────────────────────────────────────
+            react.createElement("div", { className: "dsh-armor-s-title" }, "按模型覆盖"),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-desc" },
+              "对某个模型族改判载荷或强制双段：选「默认」回到上面的自动分流；选「自定义」用下方输入框里的文本。改动立即生效（作用于下一个模型步）。"
+            ),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-list" },
+              payloads.length === 0
+                ? react.createElement("span", { className: "dsh-armor-s-desc" }, ready ? "（未取到载荷清单）" : "加载中…")
+                : payloads.map(function (item) {
+                    var family = item && item.id ? item.id : "";
+                    var ov = snap.modelOverrides[family];
+                    var active = ov && ov.payload ? ov.payload : "";
+                    var loadout = active === "" ? "默认" : active === "custom" ? "自定义" : active;
+                    var dual = ov && typeof ov.dualLayer === "boolean" ? (ov.dualLayer ? "双段" : "单段") : "";
+                    return react.createElement(
+                      "div",
+                      { key: family, className: "dsh-armor-ov-row", "data-family": family },
+                      react.createElement("span", { className: "dsh-armor-s-label" }, family),
+                      react.createElement(
+                        "div",
+                        { className: "dsh-armor-seg" },
+                        // 「默认」按钮：清掉该族覆盖
+                        react.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "dsh-armor-opt",
+                            "data-active": active === "" ? "true" : "false",
+                            disabled: busy || !ready,
+                            onClick: function () { run(routing.setOverride(family, null)); }
+                          },
+                          "默认"
+                        ),
+                        // 各载荷 + 自定义
+                        payloads.concat([{ id: "custom", label: "自定义" }]).map(function (p) {
+                          var pid = p && p.id ? p.id : "";
+                          return react.createElement(
+                            "button",
+                            {
+                              key: pid,
+                              type: "button",
+                              className: "dsh-armor-opt",
+                              "data-active": active === pid ? "true" : "false",
+                              disabled: busy || !ready,
+                              onClick: function () { run(routing.setOverride(family, { payload: pid })); }
+                            },
+                            pid
+                          );
+                        }),
+                        // 双段开关（三态：默认 / 强制双段 / 强制单段）
+                        react.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "dsh-armor-opt",
+                            "data-active": dual === "双段" ? "true" : "false",
+                            disabled: busy || !ready,
+                            onClick: function () { run(routing.setOverride(family, { dualLayer: true })); }
+                          },
+                          "双段"
+                        ),
+                        react.createElement(
+                          "button",
+                          {
+                            type: "button",
+                            className: "dsh-armor-opt",
+                            "data-active": dual === "单段" ? "true" : "false",
+                            disabled: busy || !ready,
+                            onClick: function () { run(routing.setOverride(family, { dualLayer: false })); }
+                          },
+                          "单段"
+                        )
+                      ),
+                      react.createElement(
+                        "span",
+                        { className: "dsh-armor-s-desc" },
+                        loadout + (dual !== "" ? " · " + dual : "")
+                      )
+                    );
+                  })
+            ),
+            // ── 自定义载荷（0.10.0）────────────────────────────────────────────
+            react.createElement("div", { className: "dsh-armor-s-title" }, "自定义载荷"),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-desc" },
+              "粘贴任意提示词文本，存为 custom 载荷；在上方把某个模型族指到「自定义」即生效。上限 64k 字符。"
+            ),
+            react.createElement(CustomPayloadEditor, null),
+            react.createElement(
+              "div",
+              { className: "dsh-armor-s-note" },
+              "当前自定义载荷：" + (snap.customPayload.text.length > 0 ? snap.customPayload.text.length + " 字符" : "（空）")
+            )
+          );
+        }
+
+        /** 自定义载荷输入框：本地草稿 + 显式保存（避免每次按键都打 settings）。 */
+        function CustomPayloadEditor() {
+          var snap = react.useSyncExternalStore(routing.store.subscribe, routing.store.getSnapshot, routing.store.getSnapshot);
+          var draftPair = react.useState(null); // null = 未编辑（显示真值），string = 草稿
+          var draft = draftPair[0];
+          var setDraft = draftPair[1];
+          var busyPair = react.useState(false);
+          var busy = busyPair[0];
+          var setBusy = busyPair[1];
+          var dirty = draft !== null && draft !== snap.customPayload.text;
+          var save = function () {
+            if (!dirty) return;
+            setBusy(true);
+            Promise.resolve(routing.setCustomText(draft)).then(
+              function () { setDraft(null); setBusy(false); },
+              function () { setBusy(false); }
+            );
+          };
+          return react.createElement(
+            "div",
+            { className: "dsh-armor-custom" },
+            react.createElement("textarea", {
+              className: "dsh-armor-custom-input",
+              rows: 6,
+              spellCheck: false,
+              placeholder: "粘贴自定义载荷全文…（保存后可在上方按模型族指到「自定义」）",
+              value: draft !== null ? draft : snap.customPayload.text,
+              onChange: function (event) { setDraft(event && event.target ? event.target.value : ""); }
+            }),
+            react.createElement(
+              "button",
+              {
+                type: "button",
+                className: "dsh-armor-opt",
+                "data-active": dirty ? "true" : "false",
+                disabled: busy || !dirty,
+                onClick: save
+              },
+              dirty ? "保存自定义载荷" : "已保存"
             )
           );
         }
@@ -626,7 +784,7 @@
                 name: "settings.plugins.tab",
                 id: "dsh-switch-armor",
                 order: 20,
-                label: function () { return "Switch Armor"; }
+                label: function () { return "护甲防御"; }
               },
               ArmorSettings
             )

@@ -182,7 +182,7 @@ mustContain(indexSrc, "isEnabledForSession", "会话开关: 会话维度真值�
 mustContain(indexSrc, "sessionIdOf", "会话开关: 从 assemble context 取会话 id");
 mustContain(indexSrc, "SESSION_STORE", "会话开关: 覆盖表落盘路径");
 mustContain(indexSrc, '"/dsh-switch-armor/session"', "会话开关: 会话读写路由");
-mustContain(indexSrc, 'pluginVersion: "0.9.1"', "内核版本 0.9.1");
+mustContain(indexSrc, 'pluginVersion: "0.10.0"', "内核版本 0.10.0");
 mustContain(indexSrc, "switch_armor_profile", "保留 profile 元数据工具");
 mustContain(indexSrc, "armorProjectionApply", "保留会话投影评分器");
 mustContain(indexSrc, "stateVersion: 5", "投影版本 stateVersion 5（新增 turnSeq/refusalSeq 回滚锚点）");
@@ -267,7 +267,7 @@ mustContain(indexSrc, '"manual"', "配置: manual 模式取值");
 mustContain(indexSrc, "readState", "配置: 多字段状态解析（三层优先级链）");
 mustContain(indexSrc, "resolveField", "配置: 逐字段优先级解析");
 // POST 校验放宽为「至少一个合法字段」——并且非法值仍拒绝
-mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload }",
+mustContain(indexSrc, "expected at least one of { enabled, mode, manualPayload, modelOverrides, customPayload }",
   "配置: POST 放宽为至少一个合法字段");
 mustContain(indexSrc, "expected { mode:", "配置: 非法 mode 仍 400");
 mustContain(indexSrc, "expected { manualPayload:", "配置: 非法 manualPayload 仍 400");
@@ -282,8 +282,22 @@ mustAbsent(indexSrc, "return text.length > 0 ? text : PROMPT_TEXT",
 // 双段只留给自持族：外部稿恒单段
 mustContain(indexSrc, "NATIVE_PAYLOAD_IDS", "双段口径: 自持族白名单");
 mustContain(indexSrc, '["dsh", "dsh-gen4"]', "双段口径: 自持族恰为 dsh 与 dsh-gen4");
-mustContain(indexSrc, 'if (!NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context))) return ""',
-  "双段口径: order 200 只对自持族非空");
+mustContain(indexSrc, "if (!dualLayerFor(context)) return \"\"",
+  "双段口径: order 200 走 dualLayerFor（原生判定 + 族覆盖可强制）");
+// ── 0.10.0：按模型族覆盖 + 自定义载荷 ────────────────────────────────────────
+mustContain(indexSrc, "function dualLayerFor(context)", "覆盖: dualLayerFor 存在");
+mustContain(indexSrc, "override.dualLayer", "覆盖: 族覆盖可强制双段（override.dualLayer 判定）");
+mustContain(indexSrc, "override.payload", "覆盖: 族覆盖可改判载荷（override.payload）");
+mustContain(indexSrc, "function sanitizeModelOverrides", "覆盖: 覆盖表清洗函数存在");
+mustContain(indexSrc, "function sanitizeCustomPayload", "自定义: 文本清洗函数存在");
+mustContain(indexSrc, 'CUSTOM_PAYLOAD_MAX_CHARS', "自定义: 64k 字符上限常量");
+mustContain(indexSrc, 'id === "custom"', "自定义: payloadTextFor 支持 custom 载荷");
+mustContain(indexSrc, "MODEL_OVERRIDES_FIELD", "配置: modelOverrides 字段常量");
+mustContain(indexSrc, "CUSTOM_PAYLOAD_FIELD", "配置: customPayload 字段常量");
+mustContain(indexSrc, 'modelOverrides: modelOverridesField()', "schema: modelOverrides 已注册");
+mustContain(indexSrc, 'customPayload: customPayloadField()', "schema: customPayload 已注册");
+mustContain(indexSrc, "__testDualLayerFor", "探针: dualLayerFor 已导出");
+mustContain(indexSrc, "__testSanitizeModelOverrides", "探针: 覆盖表清洗已导出");
 mustContain(indexSrc, '"dsh-gen4": { label:', "载荷表: 备用自持档 dsh-gen4 在表内");
 mustContain(indexSrc, "claude: { label:", "载荷表: claude 在表内");
 mustContain(indexSrc, "grok: { label:", "载荷表: grok 在表内");
@@ -358,9 +372,9 @@ check(!existsSync(join(ROOT, "specialists")), "纯净架构: 零外部专家清�
 // ---- 5. package.json 规范断言 ----
 const pkg = existsSync(PKG_PATH) ? JSON.parse(readFileSync(PKG_PATH, "utf8")) : {};
 check(pkg.name === "dsh-switch-armor", "package.json name = dsh-switch-armor");
-check(pkg.version === "0.9.1", "package.json version = 0.9.1");
+check(pkg.version === "0.10.0", "package.json version = 0.10.0");
 check(pkg.dsh?.id === "dsh-switch-armor", "dsh.id = dsh-switch-armor");
-check(pkg.dsh?.version === "0.9.1", "dsh.version = 0.9.1");
+check(pkg.dsh?.version === "0.10.0", "dsh.version = 0.10.0");
 check(pkg.exports?.["./client"] === "./client.js", "client 导出映射对齐三代标准");
 
 // ---- 5b. 版本一致性（四者相等，期望值只从 package.json 读，不写死） ----

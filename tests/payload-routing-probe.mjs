@@ -54,8 +54,9 @@ const SOURCES = {
   "prompts/dsh-unrestricted.md": "6b6e145b696d5a7edd05452c561d514d2b4fbb60c319a1af85c394e39032e78f",
   "prompts/claude-keysmith.md": "2792d33890ed06948eecfc4eb8371db6b6aa5e8111b1623424100e077bcb32ca",
   "prompts/grok-keysmith.md": "3c669118d67690856f3ac11cd0f2beb687aa6e718dc76ed3f54c0751e01e48c9",
-  // glm 字节保真（= 上游 zcode-keysmith 的 examples/system-role.md）
-  "prompts/glm-keysmith.md": "30e7de01b1a453d38cb1fa38bc8f4bb26eeaf8eccafada1aa178df1a1cf1c9e1",
+  // glm：0.9.0 收编时与上游逐字一致（30e7de01…），0.9.1 起用户本地改动
+  // （删了两段未成年条款）→ 锁用户改后的哈希；上游原文见 SOURCES.md
+  "prompts/glm-keysmith.md": "654704c19f384e77226885d246690bf3444c4b1cddbb1b7cfcda5d293a868b87",
   // kimi 是适配稿（非字节保真），锁适配后的哈希防手滑改动
   "prompts/kimi-break.md": "72fd562aad820ef5ab6b32386e4b4769402d06a741ece86eecf54b913209d176",
 };
@@ -362,6 +363,50 @@ if (typeof handler === "function") {
   // 切回 auto
   const back = await call("POST", "/dsh-switch-armor/settings", { mode: "auto" });
   check(back?.ok === true && back?.mode === "auto", "POST mode=auto 切回", JSON.stringify(back));
+
+  // ── 0.10.0：按模型族覆盖 + 自定义载荷 ─────────────────────────────────────
+  // glm 族 → dsh-gen4（覆盖默认的 glm 档）
+  const ovGen4 = await call("POST", "/dsh-switch-armor/settings", { modelOverrides: { glm: { payload: "dsh-gen4" } } });
+  check(ovGen4?.ok === true, "POST modelOverrides: glm→dsh-gen4", JSON.stringify(ovGen4?.modelOverrides));
+  check(identify(primary({ agent: { options: { model: "glm-5.3-flash" } } })) === "dsh-gen4",
+    "override: glm-5.3-flash 走 dsh-gen4（覆盖 glm 档）");
+  // 双段强制：glm 族 override.dualLayer=true → 显式覆盖，镜像非空
+  await call("POST", "/dsh-switch-armor/settings", { modelOverrides: { glm: { payload: "dsh-gen4", dualLayer: true } } });
+  check(reinforce({ agent: { options: { model: "glm-5.3-flash" } } }).length > 0,
+    "override: glm dualLayer=true 强制双段（镜像非空）");
+  // 双段强制关：kimi 族 override.dualLayer=false → 即便选中自持族也单段
+  await call("POST", "/dsh-switch-armor/settings", { modelOverrides: { kimi: { payload: "dsh", dualLayer: false } } });
+  const kimiCtx = { agent: { options: { model: "kimi-k2" } } };
+  check(identify(primary(kimiCtx)) === "dsh", "override: kimi→dsh（覆盖 kimi 档）");
+  check(reinforce(kimiCtx).length === 0, "override: kimi dualLayer=false 强制单段（镜像空）");
+  // custom 载荷：文本来自 customPayload.text
+  await call("POST", "/dsh-switch-armor/settings", {
+    modelOverrides: { glm: { payload: "custom" } },
+    customPayload: { text: "CUSTOM-PAYLOAD-SMOKE-TEXT-0X0A" },
+  });
+  const customText = primary({ agent: { options: { model: "glm-5.3-flash" } } });
+  check(customText.includes("CUSTOM-PAYLOAD-SMOKE-TEXT-0X0A"), "override: glm→custom 用输入框文本");
+  // custom 未配置文本 → 回落 dsh（绝不注入空串）
+  await call("POST", "/dsh-switch-armor/settings", { customPayload: { text: "" } });
+  check(identify(primary({ agent: { options: { model: "glm-5.3-flash" } } })) === "dsh",
+    "override: custom 空文本 → 回落 dsh");
+  // 非法族名 / 非法 payload / 非法类型被清洗丢弃
+  const dirty = await call("POST", "/dsh-switch-armor/settings", {
+    modelOverrides: { "Bad Family!": { payload: "dsh" }, glm: { payload: "nope" }, kimi: { dualLayer: "yes" } },
+  });
+  check(dirty?.ok === true
+    && dirty?.modelOverrides?.["Bad Family!"] === undefined
+    && dirty?.modelOverrides?.glm === undefined
+    && dirty?.modelOverrides?.kimi === undefined,
+    "override 清洗：非法族名/payload/类型全被丢弃", JSON.stringify(dirty?.modelOverrides));
+  // 清空覆盖：glm 回到默认档
+  await call("POST", "/dsh-switch-armor/settings", { modelOverrides: {} });
+  check(identify(primary({ agent: { options: { model: "glm-5.3-flash" } } })) === "glm",
+    "override 清空后 glm 回到默认档");
+  // GET 含新字段
+  const gotOv = await call("GET", "/dsh-switch-armor/settings");
+  check(gotOv?.modelOverrides !== undefined && Array.isArray(gotOv?.overridePayloadIds) && gotOv.overridePayloadIds.includes("custom"),
+    "GET /settings 含 modelOverrides 与 overridePayloadIds");
 
   // 非法载荷 id → 400
   const bad = await call("POST", "/dsh-switch-armor/settings", { manualPayload: "nope" });

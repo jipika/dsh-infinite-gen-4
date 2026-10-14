@@ -1,4 +1,4 @@
-# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.9.1)
+# DeepSeek Harness Plugin — Switch Armor / dsh-switch-armor (v0.10.0)
 
 网络安全红队（Red-Teaming）测试插件，项目名：**Switch Armor**。
 专为 **DeepSeek-V4.1 / V4-Pro / V4-Flash 及 MoE 架构** 重构，采用
@@ -148,13 +148,14 @@ verify 只断言它们「未被改动」（比对固定 SHA256）与「无 `{{`�
 | v0.8.2 | 补全 npm 元数据：`license: MIT` + `keywords`（解决 npm 页面不显示许可证） |
 | v0.8.3 | 修客户端状态条版本漂移；新增「四者版本一致」与「样式锚点缺失即失败」两类断言 |
 | v0.9.0 | **载荷表 7 → 9**：新增 `glm`（`^(?:glm\|chatglm)` → ZCode 载荷，为 GLM 写的）与 `kimi`（`^kimi` → kimi-break，收编时剥离 Kimi Code 宿主段）；`glm-5.3*` 从 `dsh` 档改判 `glm` 档 |
-| **v0.9.1** | `swe` 系归入 `kimi` 载荷（`^(?:kimi\|swe[\d_-])`，收紧排除 `sweet-*`） |
+| v0.9.1 | `swe` 系归入 `kimi` 载荷（`^(?:kimi\|swe[\d_-])`，收紧排除 `sweet-*`） |
+| **v0.10.0** | **按模型族覆盖 + 自定义载荷**：settings 新增 `modelOverrides`（`{ family: { payload, dualLayer } }`，payload 可为 `custom`）与 `customPayload`（`{ text }`，64k 字符上限）；`dualLayerFor()` 取代裸 `NATIVE_PAYLOAD_IDS.includes` 判定（族覆盖可强制双段/单段）；自有路由 GET/POST 扩两字段（对象字段按 JSON 序列化比对持久化校验）；设置页新增覆盖表（每族：默认/9 载荷/自定义/双段/单段）与自定义输入框；探针 collect 修复嵌套数组 children 漏数 |
 
 ## Local verification
 
 ```powershell
 node --check index.js && node --check client.js
-node scripts/verify_prompt_gen4.mjs    # 262 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
+node scripts/verify_prompt_gen4.mjs    # 269 项：载荷契约 + 分流规则 + 配置面 + 客户端 tab + 投影
 node tests/payload-routing-probe.mjs   # 104 项：分流矩阵 + 单段/双段 + 手动模式 + 400 分支
 node tests/armor-settings-probe.mjs    # 27 项：设置页 11 按钮（2 模式 + 9 载荷）+ 写入路径
 node tests/armor-dock-probe.mjs        # 状态条 5 阶段渲染

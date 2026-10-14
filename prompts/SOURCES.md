@@ -1,7 +1,8 @@
 # 载荷来源与许可
 
 本目录下的**外部载荷**（`gpt-*.md` 三份 + `dsh-unrestricted.md` + `claude-keysmith.md` +
-`grok-keysmith.md` + `glm-keysmith.md`）均从第三方仓库引入、**原样保留字节**，不参与
+`grok-keysmith.md`）均从第三方仓库引入、**原样保留字节**（`glm-keysmith.md` 例外，
+见下文用户本地改动；`kimi-break.md` 也例外），不参与
 `infinite-gen-4.md` / `infinite-gen-4.1-flash.md` 的「逐字同源」约束
 （那两份是本插件自持载荷）。**唯一例外**是 `kimi-break.md`（见下文，收编时剥离了
 Kimi Code 宿主专属段，非字节保真）。
@@ -39,6 +40,9 @@ Kimi Code 宿主专属段，非字节保真）。
   ZCode 是 GLM 的 CLI，这份本就是给 GLM 写的；此前「不整合」的决定按用户新指令撤销。
   载荷内含上游作者的人格绑定（"Ethan" ×8 / "Pier" ×1）—— 与 `grok` / `claude` 两份
   Keysmith 载荷同一性质（它们各含 "Ethan" ×2），按字节保真惯例不改写。
+  **0.9.1 后用户本地改动**：删除两段未成年保护条款（上游 `## The One Line` 段与
+  NSFW 段末句），当前 sha256 `654704c1…`（上游原文 `30e7de01…`，12802B）——
+  不再与上游逐字一致。
 - **引入（0.9.0）**：`YD-233/kimi-break` · `SYSTEM.md`（162★）→ `kimi-break.md`。
   **非字节保真**，适配说明见下节。
 - **未引入**：`codex-keysmith` 的 `gpt-persona-contract.md` / `gpt-contract.md` / `gpt-lean.md` /

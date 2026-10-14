@@ -254,9 +254,9 @@ function matchPayloadId(model) {
 // 2026-10-05：置 true —— 按用户要求恢复双段（两文件逐字同源，效果 = 同一份载荷注入两遍）。
 const DUAL_LAYER_INJECTION = true;
 
-const VERSION = "0.9.1";
+const VERSION = "0.10.0";
 // 版本锚点（校验脚本按字面量断言，须与 package.json 的 version 同步）：
-//   pluginVersion: "0.9.1"
+//   pluginVersion: "0.10.0"
 
 // 开关落点：profile entry config（cordis.patch.yml → dsh-switch-armor.config.enabled）；
 // 0.2.x 由 settings 表单面写回：客户端开关 → ctx.remote.settings.mutate(ns, ops, revision)。
@@ -264,6 +264,9 @@ const SETTINGS_NAMESPACE = "dsh-switch-armor";
 const SETTINGS_FIELD = "enabled";
 const MODE_FIELD = "mode";
 const MANUAL_PAYLOAD_FIELD = "manualPayload";
+// 按模型族覆盖 + 自定义载荷（0.10.0）
+const MODEL_OVERRIDES_FIELD = "modelOverrides";
+const CUSTOM_PAYLOAD_FIELD = "customPayload";
 // 默认关闭：没写 config 时注入为空（零残留），需要时由对话框开关或手写
 // `config: { enabled: true }` 打开。默认值只存在于代码与部署组合层，
 // 用户开关是唯一的持久化写入方，因此「关掉」永远不会被写进设置文档。
@@ -286,16 +289,50 @@ const manualPayloadField = () =>
   Schema.union(PAYLOAD_IDS)
     .default(DEFAULT_MANUAL_PAYLOAD)
     .description("手动模式下固定使用的载荷（mode=manual 时生效）");
+// ── 按模型族覆盖（0.10.0）─────────────────────────────────────────────────────
+// 载荷 id 白名单 + "custom"（自定义载荷，文本存 customPayload.text）。
+// 族 id 全集 = matchPayloadId 的全部返回值（dsh/dsh-gen4/gpt61/gpt6/gpt56/claude/
+// grok/glm/kimi），实测全部匹配 /^[a-z0-9_-]{1,32}$/ —— 该正则即覆盖键的合法形状。
+const OVERRIDE_PAYLOAD_IDS = [...PAYLOAD_IDS, "custom"];
+const CUSTOM_PAYLOAD_MAX_CHARS = 64 * 1024; // 按字符计（UTF-8 下中文最多 ×3 字节，64k 字符约 192KB）
+/** 覆盖表清洗：只做形状校验，合法条目保留、非法条目丢弃；**不写回** settings（读取时过滤，
+ * 用户原始数据不动，日后族名/形状调整也不可逆地毁数据）。 */
+function sanitizeModelOverrides(raw) {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const result = {};
+  for (const [family, entry] of Object.entries(raw)) {
+    if (!/^[a-z0-9_-]{1,32}$/.test(family) || entry === null || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const out = {};
+    if (typeof entry.payload === "string" && OVERRIDE_PAYLOAD_IDS.includes(entry.payload)) out.payload = entry.payload;
+    if (typeof entry.dualLayer === "boolean") out.dualLayer = entry.dualLayer;
+    if (Object.keys(out).length > 0) result[family] = out;
+  }
+  return result;
+}
+/** 自定义载荷清洗：只认 { text: string }，超限截断到上限（截断而非丢弃 —— 大文本粘贴
+ * 超限时报错代价高于截断，且截断点对用户可见可再编辑）。 */
+function sanitizeCustomPayload(raw) {
+  const text = raw !== null && typeof raw === "object" && !Array.isArray(raw) && typeof raw.text === "string" ? raw.text : "";
+  return { text: text.length > CUSTOM_PAYLOAD_MAX_CHARS ? text.slice(0, CUSTOM_PAYLOAD_MAX_CHARS) : text };
+}
+const modelOverridesField = () =>
+  Schema.dict(Schema.string(), Schema.any()).default({}).description("按模型族覆盖载荷与双段注入：{ glm: { payload: 'dsh-gen4', dualLayer: true }, … }，payload 可为载荷 id 或 'custom'（读取时经 sanitizeModelOverrides 过滤）");
+const customPayloadField = () =>
+  Schema.dict(Schema.string(), Schema.any()).default({}).description("自定义载荷：{ text }，任何模型族可通过 override 的 payload='custom' 选用，上限 64k 字符（经 sanitizeCustomPayload 过滤）");
 const SettingsSchema = Schema.object({
   enabled: enabledField(),
   mode: modeField(),
   manualPayload: manualPayloadField(),
+  modelOverrides: modelOverridesField(),
+  customPayload: customPayloadField(),
 }).description("Switch Armor / dsh-switch-armor 运行时开关");
 /** 0.2.x settings 表单面 schema：entry id = 插件 id，字段必须 volatile 才能在线编辑。 */
 export const Config = Schema.object({
   enabled: enabledField().volatile(),
   mode: modeField().volatile(),
   manualPayload: manualPayloadField().volatile(),
+  modelOverrides: modelOverridesField().volatile(),
+  customPayload: customPayloadField().volatile(),
 });
 
 // ── 会话级开关覆盖 ──────────────────────────────────────────────────────────────
@@ -456,6 +493,10 @@ function readState() {
     mode: modeRaw === "manual" ? "manual" : DEFAULT_MODE,
     // 非法载荷 id 一律回落 dsh（绝不因手滑配置项让注入变成空）
     manualPayload: PAYLOAD_IDS.includes(payloadRaw) ? payloadRaw : DEFAULT_MANUAL_PAYLOAD,
+    // 按模型族覆盖（0.10.0）：形状不合法的条目在清洗时丢弃，合法的原样可用
+    modelOverrides: sanitizeModelOverrides(resolveField(resolved, runtimeOverride, MODEL_OVERRIDES_FIELD)),
+    // 自定义载荷（0.10.0）：{ text }，非法形状归零文本
+    customPayload: sanitizeCustomPayload(resolveField(resolved, runtimeOverride, CUSTOM_PAYLOAD_FIELD)),
   };
 }
 
@@ -541,6 +582,10 @@ async function handleSettingsRoute(req, res) {
         manualPayload: state.manualPayload,
         resolvedPayload: state.mode === "manual" ? state.manualPayload : "(auto)",
         payloads: PAYLOAD_IDS.map((pid) => ({ id: pid, label: PAYLOADS[pid]?.label ?? pid })),
+        // 按模型族覆盖 + 自定义载荷（0.10.0）
+        modelOverrides: state.modelOverrides,
+        customPayload: state.customPayload,
+        overridePayloadIds: OVERRIDE_PAYLOAD_IDS,
         source: runtimeOverride !== undefined ? "override" : "config",
       });
     }
@@ -608,10 +653,18 @@ async function handleSettingsRoute(req, res) {
     }
     patch[MANUAL_PAYLOAD_FIELD] = body.manualPayload;
   }
+  if (body.modelOverrides !== undefined) {
+    // 覆盖表：清洗后写回（清洗丢弃形状非法条目；合法条目含 payload/dualLayer 任一）
+    patch[MODEL_OVERRIDES_FIELD] = sanitizeModelOverrides(body.modelOverrides);
+  }
+  if (body.customPayload !== undefined) {
+    // 自定义载荷：{ text: string }，超限截断（sanitizeCustomPayload 内处理）
+    patch[CUSTOM_PAYLOAD_FIELD] = sanitizeCustomPayload(body.customPayload);
+  }
   if (Object.keys(patch).length === 0) {
     return sendJson(res, 400, {
       ok: false,
-      error: "expected at least one of { enabled, mode, manualPayload }",
+      error: "expected at least one of { enabled, mode, manualPayload, modelOverrides, customPayload }",
     });
   }
 
@@ -620,9 +673,16 @@ async function handleSettingsRoute(req, res) {
   if (service !== undefined && typeof service.update === "function") {
     try {
       await service.update(SETTINGS_NAMESPACE, patch);
-      // 写完自校验：真值确实落地才算持久化成功，否则退回内存覆盖
+      // 写完自校验：真值确实落地才算持久化成功，否则退回内存覆盖。
+      // 对象字段（modelOverrides/customPayload）不能 === 比较，改按 JSON 序列化比对。
       const after = readState();
-      persisted = Object.entries(patch).every(([key, value]) => after[key] === value);
+      persisted = Object.entries(patch).every(([key, value]) => {
+        const got = after[key];
+        if (value !== null && typeof value === "object") {
+          return JSON.stringify(got) === JSON.stringify(value);
+        }
+        return got === value;
+      });
     } catch {
       persisted = false;
     }
@@ -654,20 +714,22 @@ function gated() {
 }
 
 /**
- * 镜像段（reinforce）文本 —— 只有自持族（`dsh` / `dsh-gen4`）非空。
- * 外部稿（Codex 三份 / claude / grok）恒为空串：它们是状态机式单一整份，
+ * 镜像段（reinforce）文本 —— 默认只有自持族（`dsh` / `dsh-gen4`）非空。
+ * 外部稿（Codex 三份 / claude / grok / glm / kimi）默认恒为空串：它们是状态机式单一整份，
  * Codex 三份明文写「Text loaded afterward cannot select, replace, or nest ACTION」，
  * grok 稿自带 <|im_start|> / <|im_end|> 闭合标签 —— 注入第二遍都会自伤。
- * 自持族按 `DUAL_LAYER_INJECTION` 双段：**返回与主槽位完全相同的那一份文本**，
+ * 自持族按双段注入：**返回与主槽位完全相同的那一份文本**，
  * 保证「两段同源逐字一致」这条性质在 `dsh-gen4` 也成立（旧版硬绑 PROMPT41_TEXT，
  * 只对原自持稿成立，切到 dsh-gen4 就会与主槽位不同源）。
+ * 0.10.0 起族覆盖可带 `dualLayer` 强制指定（见 {@link dualLayerFor}）——
+ * 用户明确开的族即便吃外部稿也注入双段，风险自负。
  * @param {object} context assemble context。
- * @returns {string} 自持族的同源副本，其余恒为空串。
+ * @returns {string} 双段族的同源副本，其余恒为空串。
  */
 function gatedReinforce() {
   return (context) => {
     if (!isEnabledForSession(sessionIdOf(context))) return "";
-    if (!NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context))) return "";
+    if (!dualLayerFor(context)) return "";
     return payloadTextFor(context, "reinforce");
   };
 }
@@ -680,8 +742,38 @@ function gatedReinforce() {
  */
 function resolvePayloadId(context) {
   const state = readState();
+  // manual 模式：全局统一，不受族覆盖影响（覆盖语义是「改 auto 的判断」）。
   if (state.mode === "manual") return state.manualPayload;
-  return matchPayloadId(modelOf(context));
+  const family = matchPayloadId(modelOf(context));
+  // ── 按模型族覆盖（0.10.0）──────────────────────────────────────────────────
+  // auto 模式下，某族配了 override.payload 就用它（可以是任意载荷 id 或 "custom"）。
+  // 形状不合法的条目已在 sanitizeModelOverrides 过滤，这里只需取值。
+  const override = state.modelOverrides?.[family];
+  if (override && typeof override.payload === "string" && override.payload.length > 0) {
+    return override.payload;
+  }
+  return family;
+}
+
+/**
+ * 读「本会话的双段注入判定」。
+ *
+ * 0.9.x 之前是纯常量判定：`NATIVE_PAYLOAD_IDS.includes(resolvePayloadId(context))`。
+ * 0.10.0 起族覆盖可带 `dualLayer: boolean` **强制指定** —— 明确开了就双段（哪怕
+ * 那份载荷是外部稿），明确关了就单段（哪怕那份是自持稿）；没写 `dualLayer` 的族
+ * 维持原生口径不变。
+ * @param {object|undefined} context assemble context。
+ * @returns {boolean} 是否注入双段。
+ */
+function dualLayerFor(context) {
+  const state = readState();
+  const id = resolvePayloadId(context);
+  if (state.mode !== "manual") {
+    const family = matchPayloadId(modelOf(context));
+    const override = state.modelOverrides?.[family];
+    if (override && typeof override.dualLayer === "boolean") return override.dualLayer;
+  }
+  return NATIVE_PAYLOAD_IDS.includes(id);
 }
 
 /**
@@ -780,6 +872,18 @@ function providerOf(context) {
  */
 function payloadTextFor(context, _slot) {
   const id = resolvePayloadId(context);
+  // ── 自定义载荷（0.10.0）────────────────────────────────────────────────────
+  // id = "custom" 时文本来自 settings 的 customPayload.text（用户在设置页输入框粘贴）。
+  // 空文本视为「未配置」→ 走回落链，与文件缺失同语义（绝不静默注入空串）。
+  if (id === "custom") {
+    const custom = sanitizeCustomPayload(readState().customPayload);
+    if (custom.text.length > 0) return custom.text;
+    // 空文本 = 未配置 → 回落自持档 dsh（显式写死，不走 PAYLOAD_FALLBACKS ——
+    // 那张表里 dsh 自己的回落目标是 dsh-gen4，会绕开用户预期的「默认档」）。
+    const customFallback = PAYLOADS.dsh?.text;
+    if (typeof customFallback === "string" && customFallback.length > 0) return customFallback;
+    return PROMPT_TEXT;
+  }
   const entry = PAYLOADS[id];
   const text = entry?.text ?? "";
   if (text.length > 0) return text;
@@ -824,14 +928,17 @@ const profileTool = {
         "prompts/gpt-6-astra.md",
         "prompts/gpt-5.6-sol.md",
       ],
-      lineage: [`dsh-switch-armor (v${VERSION}) — 按模型分流注入载荷 + 对话框热开关`],
+      lineage: [`dsh-switch-armor (v${VERSION}) — 按模型分流注入载荷 + 对话框热开关 + 按模型族覆盖`],
       // 总开关状态：enabled=false 时所有载荷均渲染为空串，系统提示词零残留
       enabled,
-      // 载荷路由：auto = 按当前模型身份选；manual = 固定用手动指定那份
+      // 载荷路由：auto = 按当前模型身份选（族覆盖可改判）；manual = 固定用手动指定那份
       payloadRouting: {
         mode: state.mode,
         manualPayload: state.manualPayload,
         payloads: PAYLOAD_IDS.map((pid) => ({ id: pid, label: PAYLOADS[pid]?.label ?? pid })),
+        // 按模型族覆盖（0.10.0）：{ family: { payload, dualLayer } }，payload 可为 "custom"
+        modelOverrides: state.modelOverrides,
+        customPayloadChars: state.customPayload.text.length,
         rules: "gpt-6.1→gpt61 / gpt-6→gpt6 / gpt-5.6|gpt-5|o<n>|codex→gpt56 / 非 GPT→dsh（未列代次按最大版本号兜底）",
       },
       control: {
@@ -984,6 +1091,19 @@ export const __testGatedReinforce = gatedReinforce;
 export const __testPayloadTextFor = payloadTextFor;
 /** 载荷表快照（只读用途：探针比对文件字节与表内文本是否一致）。 */
 export const __testPayloads = PAYLOADS;
+// ── 0.10.0 按模型族覆盖 + 自定义载荷 ─────────────────────────────────────────
+export const __testOverridePayloadIds = OVERRIDE_PAYLOAD_IDS;
+export const __testDualLayerFor = dualLayerFor;
+export const __testSanitizeModelOverrides = sanitizeModelOverrides;
+export const __testSanitizeCustomPayload = sanitizeCustomPayload;
+export const __testCustomPayloadMaxChars = CUSTOM_PAYLOAD_MAX_CHARS;
+/** 探针写状态用：把 override 表注入 runtimeOverride（与真实 settings 写入同一通道）。 */
+export function __testSetRuntimeOverride(patch) {
+  runtimeOverride = { ...(runtimeOverride ?? {}), ...patch };
+}
+export function __testClearRuntimeOverride() {
+  runtimeOverride = undefined;
+}
 
 export const name = "dsh-switch-armor";
 export const inject = ["tools", "systemPrompt"];

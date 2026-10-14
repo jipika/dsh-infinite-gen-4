@@ -100,8 +100,8 @@ const tabEntry = registered.find((r) => r.options.name === "settings.plugins.tab
 check(dockEntry !== undefined, "注册了对话栏状态条 slot");
 check(tabEntry !== undefined, "注册了 settings.plugins.tab slot");
 check(tabEntry?.options.id === "dsh-switch-armor", "tab id = 插件包名", String(tabEntry?.options.id));
-check(typeof tabEntry?.options.label === "function" && tabEntry.options.label() === "Switch Armor",
-  "tab 标签 = Switch Armor", String(tabEntry?.options.label?.()));
+check(typeof tabEntry?.options.label === "function" && tabEntry.options.label() === "护甲防御",
+  "tab 标签 = 护甲防御", String(tabEntry?.options.label?.()));
 
 // ── 渲染设置页组件：断言九份载荷都列出来、自动模式下的选中态 ────────────────
 // apply 里已经触发过一次 routing.refresh()；等它 settle 再渲染
@@ -110,6 +110,9 @@ await new Promise((resolve) => setTimeout(resolve, 30));
 reactReset();
 const tree = tabEntry.component({});
 const collect = (node, out = []) => {
+  // children 元素本身也可能是数组（react.createElement 的 children 支持嵌套数组），
+  // 0.10.0 覆盖区的 seg 里就有「按钮数组」夹在按钮之间 —— 不展开会整段漏数。
+  if (Array.isArray(node)) { node.forEach((c) => collect(c, out)); return out; }
   if (node === null || node === undefined || typeof node !== "object") return out;
   if (node.type !== undefined) out.push(node);
   if (Array.isArray(node.children)) node.children.forEach((c) => collect(c, out));
@@ -125,7 +128,10 @@ for (const id of ["dsh", "dsh-gen4", "gpt61", "gpt6", "gpt56", "claude", "grok",
 }
 // 两个模式按钮 + 九个载荷按钮
 const buttons = nodes.filter((n) => n.type === "button");
-check(buttons.length === 11, "渲染 11 个按钮（2 模式 + 9 载荷）", `实得 ${buttons.length}`);
+// 0.10.0：2 模式 + 9 手动载荷 + 9 族×(1 默认 + 10 载荷[含 custom] + 2 双段/单段) + 1 保存 = 129
+check(buttons.length === 129, "渲染 129 个按钮（2 模式 + 9 载荷 + 9 族×13 覆盖 + 1 保存）", `实得 ${buttons.length}`);
+
+
 const modeAuto = buttons.find((b) => (Array.isArray(b.children) ? b.children.join("") : b.children) === "自动");
 check(modeAuto !== undefined && modeAuto.props["data-active"] === "true", "自动模式默认选中");
 const manualBtn = buttons.find((b) => (Array.isArray(b.children) ? b.children.join("") : b.children) === "手动");

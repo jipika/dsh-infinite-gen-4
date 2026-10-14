@@ -5,15 +5,15 @@
 </p>
 
 <p align="center">
-  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.9.1&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.10.0&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
     <img src="https://img.shields.io/badge/DeepSeek%20Harness-🚀%20%E5%94%A4%E8%B5%B7%E6%A1%8C%E9%9D%A2%E5%AE%A2%E6%88%B7%E7%AB%AF%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-10B981?style=for-the-badge&logo=deepseek&logoColor=white" alt="唤起桌面客户端一键安装" />
   </a>
-  <img src="https://img.shields.io/badge/version-0.9.1-blue?style=for-the-badge" alt="v0.9.1" />
+  <img src="https://img.shields.io/badge/version-0.10.0-blue?style=for-the-badge" alt="v0.10.0" />
   <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="MIT" />
 </p>
 
 <p align="center">
-  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.9.1&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
+  <a href="dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.10.0&repo=jipika%2Fdsh-switch-armor&permissions=%E7%B3%BB%E7%BB%9F%E6%8F%90%E7%A4%BA%E8%AF%8D%E6%B3%A8%E5%85%A5%2C%E5%AE%A2%E6%88%B7%E7%AB%AF%E7%8A%B6%E6%80%81%E6%9D%A1&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip">
     <b>🚀 唤起桌面客户端一键安装</b>
   </a>
 </p>
@@ -68,8 +68,25 @@ dsh-memory:long-term  (1，记忆索引)
 | 通道 | 用法 |
 |---|---|
 | **输入框状态条** | 点一下切本会话；**⌥ 点击**切全局 |
-| **设置页** | 设置 → 插件 → Switch Armor：模式（自动 / 手动）+ 载荷单选 |
+| **设置页** | 设置 → 插件 → 护甲防御：模式 + 载荷单选 + **按模型覆盖** + **自定义载荷** |
 | **模型侧** | 调用 `switch_armor_profile` 读回当前状态与注入槽位真值 |
+
+### 🎛 按模型覆盖与自定义载荷（0.10.0）
+
+对任一模型族改判载荷或强制双段，覆盖自动分流的判定：
+
+```yaml
+# cordis.patch.yml → dsh-switch-armor.config.*（设置页改动等效）
+modelOverrides:
+  glm: { payload: "dsh-gen4" }            # glm 族改吃自持契约稿
+  kimi: { payload: "custom", dualLayer: false }  # kimi 族吃自定义载荷、强制单段
+customPayload:
+  text: "（在设置页输入框粘贴的任意提示词全文）"
+```
+
+- `payload` 可为任一载荷 id 或 `"custom"`（自定义载荷文本，上限 64k 字符）
+- `dualLayer` 省略 = 沿用原生口径（自持族双段、外部稿单段）；写 `true/false` 则**强制**覆盖
+- 设置页每族一行：默认 / 各载荷 / 自定义 / 双段 / 单段，改动立即生效（下一个模型步）
 
 **默认关闭**：装好后不拨开关，载荷不进入系统提示词。关闭时 `text` 求值函数返回空串，由 `renderPrompt()` 过滤 —— **零残留**，不是「追加一句别理会上面的内容」。
 
@@ -143,7 +160,7 @@ dsh-switch-armor/
 ### 方式 1：dsh:// 协议一键安装（桌面端）
 
 ```
-dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.9.1&repo=jipika%2Fdsh-switch-armor&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip
+dsh://plugin/install?id=dsh-switch-armor&name=Switch%20Armor&version=0.10.0&repo=jipika%2Fdsh-switch-armor&downloadUrl=https%3A%2F%2Fgithub.com%2Fjipika%2Fdsh-switch-armor%2Farchive%2Frefs%2Fheads%2Fmain.zip
 ```
 
 ### 方式 2：手动配置
@@ -185,7 +202,7 @@ node tests/payload-routing-probe.mjs
 node tests/armor-settings-probe.mjs
 ```
 
-**界面**：输入框工具栏左侧出现 `⚫ Switch Armor v0.9.1` 状态条；设置 → 插件 → Switch Armor 有独立分栏。
+**界面**：输入框工具栏左侧出现 `⚫ Switch Armor v0.10.0` 状态条；设置 → 插件 → Switch Armor 有独立分栏。
 
 **路由**（重启后）：
 
@@ -208,7 +225,8 @@ curl -s "http://127.0.0.1:19387/dsh-switch-armor/session?id=$DSH_SESSION_ID"
 
 | 版本 | 说明 |
 |---|---|
-| **v0.9.1** | `swe` 系（swe-1 / swe-2，含大小写变体）归入 `kimi` 载荷；正则收紧为 `^swe[\d_-]` 排除 `sweet-*` |
+| **v0.10.0** | 新增按模型族覆盖（`modelOverrides`：改判载荷 + 强制双段/单段）与自定义载荷（`customPayload`，设置页输入框，64k 上限）；设置页扩为覆盖表 + 输入框 |
+| v0.9.1 | `swe` 系（swe-1 / swe-2，含大小写变体）归入 `kimi` 载荷；正则收紧为 `^swe[\d_-]` 排除 `sweet-*` |
 | v0.9.0 | 载荷表 7 → 9：新增 `glm`（ZCode 载荷，GLM 专用）与 `kimi`（kimi-break）；分流规则加 `^glm`/`^chatglm`/`^kimi` 三条家族锚定 |
 | v0.8.3 | 修客户端状态条版本漂移（`client.js` 定格 0.6.0 → 与实际版本对齐）；补版本一致性断言与样式锚点失败判定 |
 | v0.8.2 | 补全 npm 元数据：`license` 与 `keywords` |
